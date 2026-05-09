@@ -58,6 +58,7 @@ jobs:
           GNEWS_API_KEY:      ${{ secrets.GNEWS_API_KEY }}
           CURRENTS_API_KEY:   ${{ secrets.CURRENTS_API_KEY }}
           FINNHUB_API_KEY:    ${{ secrets.FINNHUB_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
           CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
           CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}
           OPENAI_SEARCH_MODEL:      ${{ vars.OPENAI_SEARCH_MODEL }}

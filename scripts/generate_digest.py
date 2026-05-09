@@ -238,10 +238,8 @@ summary: "One sentence covering the 3-4 top stories of today"
 |-------|-------|--------|
 | Gold | ... | ...% |
 | Silver | ... | ...% |
-| Crude Oil | ... | ...% |
+| Brent Crude | ... | ...% |
 | Bitcoin | ... | ...% |
-
-One or two sentences of market commentary.
 
 ---
 
@@ -594,8 +592,8 @@ def _fetch_yahoo_quote(sym: str) -> Optional[dict]:
 
 def _fetch_finnhub_quote(sym: str) -> Optional[dict]:
     """
-    Fetch a quote from Finnhub — fallback when Yahoo Finance fails.
-    Supports major US indices (^GSPC, ^IXIC, ^DJI), stocks, crypto.
+    Fetch a quote from Finnhub (primary source for market data).
+    Supports US stocks, major indices, forex, crypto.
 
     Returns {"price": "...", "change": "..."} or None on error/missing key.
     Ref: https://finnhub.io/docs/api/quote
@@ -624,6 +622,81 @@ def _fetch_finnhub_quote(sym: str) -> Optional[dict]:
     return None
 
 
+def _fetch_alphavantage_quote(sym: str) -> Optional[dict]:
+    """
+    Fetch a quote from Alpha Vantage (secondary source).
+    Free tier: 25 calls/day. Use as fallback after Finnhub.
+
+    Supports US stocks/ETFs via GLOBAL_QUOTE.
+    For forex (USDINR=X style): uses CURRENCY_EXCHANGE_RATE endpoint.
+    Ref: https://www.alphavantage.co/documentation/
+
+    Returns {"price": "...", "change": "..."} or None on error/missing key.
+    """
+    api_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        # Forex pairs (e.g., USDINR=X → from=USD, to=INR)
+        if "=X" in sym:
+            pair = sym.replace("=X", "")
+            from_cur = pair[:3]
+            to_cur = pair[3:]
+            url = (
+                "https://www.alphavantage.co/query"
+                f"?function=CURRENCY_EXCHANGE_RATE"
+                f"&from_currency={from_cur}&to_currency={to_cur}"
+                f"&apikey={api_key}"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.load(resp)
+            rate_data = data.get("Realtime Currency Exchange Rate", {})
+            price = float(rate_data.get("5. Exchange Rate") or 0)
+            if price:
+                # Alpha Vantage doesn't give % change for forex — calculate from bid/ask
+                return {"price": f"{price:,.2f}", "change": "0.00%"}
+            return None
+
+        # Crypto (e.g., BTC-USD → symbol=BTC, market=USD)
+        if "-USD" in sym:
+            crypto = sym.split("-")[0]
+            url = (
+                "https://www.alphavantage.co/query"
+                f"?function=CURRENCY_EXCHANGE_RATE"
+                f"&from_currency={crypto}&to_currency=USD"
+                f"&apikey={api_key}"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.load(resp)
+            rate_data = data.get("Realtime Currency Exchange Rate", {})
+            price = float(rate_data.get("5. Exchange Rate") or 0)
+            if price:
+                return {"price": f"{price:,.2f}", "change": "0.00%"}
+            return None
+
+        # Stocks/ETFs/Indices — use GLOBAL_QUOTE
+        # Strip ^ prefix (Alpha Vantage doesn't use it)
+        av_sym = sym.replace("^", "").replace("=F", "")
+        url = (
+            "https://www.alphavantage.co/query"
+            f"?function=GLOBAL_QUOTE&symbol={urllib.parse.quote(av_sym)}"
+            f"&apikey={api_key}"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        quote = data.get("Global Quote", {})
+        price = float(quote.get("05. price") or 0)
+        perc = float((quote.get("10. change percent") or "0").replace("%", ""))
+        if price:
+            return {"price": f"{price:,.2f}", "change": f"{perc:+.2f}%"}
+    except Exception as exc:
+        _log("WARN", f"  Alpha Vantage ({sym}) failed: {exc}")
+    return None
+
+
 def _fetch_market_data() -> dict:
     """
     Fetch all market data in parallel.
@@ -635,33 +708,38 @@ def _fetch_market_data() -> dict:
       India:       "Nifty 50", "Sensex"
       US:          "S&P 500", "NASDAQ", "Dow Jones"
       Asia/Europe: "Nikkei 225", "FTSE 100", "DAX"
-      Commodities: "Gold", "Silver", "Crude Oil"
+      Commodities: "Gold", "Silver", "Brent Crude"
       Crypto:      "Bitcoin"
     """
     result: dict = {}
     _NA = {"price": "[N/A]", "change": "[N/A]"}
 
     # ── India: official exchange APIs first ──────────────────────────────────
+    # Fetch both from official sources first
     nifty = _fetch_nse_nifty()
-    if nifty:
-        result["Nifty 50"] = nifty
-    else:
-        _log("INFO", "  NSE unavailable — trying Yahoo → Finnhub for Nifty ...")
-        q = _fetch_yahoo_quote("^NSEI") or _fetch_finnhub_quote("^NSEI")
-        result["Nifty 50"] = q or _NA
-        if q:
-            _log("DATA", f"  Nifty 50 (fallback): {q['price']} ({q['change']})")
-
     sensex = _fetch_bse_sensex()
-    if sensex:
+
+    # If BOTH official sources work, use them (consistent same-session data)
+    if nifty and sensex:
+        result["Nifty 50"] = nifty
         result["Sensex"] = sensex
+        _log("DATA", f"  Nifty 50 (NSE): {nifty['price']} ({nifty['change']})")
         _log("DATA", f"  Sensex (BSE): {sensex['price']} ({sensex['change']})")
     else:
-        _log("INFO", "  BSE unavailable — trying Yahoo → Finnhub for Sensex ...")
-        q = _fetch_yahoo_quote("^BSESN") or _fetch_finnhub_quote("^BSESN")
-        result["Sensex"] = q or _NA
-        if q:
-            _log("DATA", f"  Sensex (fallback): {q['price']} ({q['change']})")
+        # If either fails, use same source for BOTH to ensure consistent % change
+        _log("INFO", "  NSE/BSE incomplete — using Finnhub/AV/Yahoo for both ...")
+        q_nifty = (_fetch_finnhub_quote("^NSEI") or
+                   _fetch_alphavantage_quote("^NSEI") or
+                   _fetch_yahoo_quote("^NSEI"))
+        q_sensex = (_fetch_finnhub_quote("^BSESN") or
+                    _fetch_alphavantage_quote("^BSESN") or
+                    _fetch_yahoo_quote("^BSESN"))
+        result["Nifty 50"] = q_nifty or _NA
+        result["Sensex"] = q_sensex or _NA
+        if q_nifty:
+            _log("DATA", f"  Nifty 50 (fallback): {q_nifty['price']} ({q_nifty['change']})")
+        if q_sensex:
+            _log("DATA", f"  Sensex (fallback): {q_sensex['price']} ({q_sensex['change']})")
 
     # ── Global indices + commodities + crypto (parallel) ────────────────────
     _GLOBAL_SYMBOLS: list[tuple[str, str]] = [
@@ -673,20 +751,24 @@ def _fetch_market_data() -> dict:
         ("DAX",        "^GDAXI"),
         ("Gold",       "GC=F"),
         ("Silver",     "SI=F"),
-        ("Crude Oil",  "CL=F"),
+        ("Brent Crude", "BZ=F"),
         ("Bitcoin",    "BTC-USD"),
         ("USD/INR",    "USDINR=X"),
     ]
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
-        q = _fetch_yahoo_quote(sym)
-        if q:
-            _log("DATA", f"  {label} (Yahoo): {q['price']} ({q['change']})")
-            return label, q
-        # Fallback: Finnhub quote (free tier supports ^GSPC, ^IXIC, ^DJI, crypto)
+        # Priority: Finnhub → Alpha Vantage → Yahoo
         q = _fetch_finnhub_quote(sym)
         if q:
             _log("DATA", f"  {label} (Finnhub): {q['price']} ({q['change']})")
+            return label, q
+        q = _fetch_alphavantage_quote(sym)
+        if q:
+            _log("DATA", f"  {label} (AlphaVantage): {q['price']} ({q['change']})")
+            return label, q
+        q = _fetch_yahoo_quote(sym)
+        if q:
+            _log("DATA", f"  {label} (Yahoo): {q['price']} ({q['change']})")
         else:
             _log("WARN", f"  {label} ({sym}): all sources failed")
         return label, q
@@ -703,7 +785,7 @@ def _fetch_market_data() -> dict:
         "Nifty 50", "Sensex", "USD/INR",
         "S&P 500", "NASDAQ", "Dow Jones",
         "Nikkei 225", "FTSE 100", "DAX",
-        "Gold", "Silver", "Crude Oil",
+        "Gold", "Silver", "Brent Crude",
         "Bitcoin",
     ]:
         ordered[key] = result.get(key, _NA)
@@ -1317,13 +1399,6 @@ def _build_direct(
     tech_mixed = tech_news[:2] + [f"**{h}**" for h in hn[:2]]
     tech_sec   = _section(tech_mixed, "- _No tech news available today._")
 
-    if mkt_commentary:
-        mkt_comment = mkt_commentary[:400]
-    else:
-        chg = nifty["change"]
-        direction = "gained" if chg.startswith("+") else "fell"
-        mkt_comment = f"Nifty {direction} {chg} to {nifty['price']}."
-
     parts = []
     if nifty["price"] != "[N/A]":
         parts.append(f"Nifty {nifty['price']} ({nifty['change']})")
@@ -1365,10 +1440,8 @@ summary: "{summary}"
 |-------|-------|--------|
 {_mrow("Gold")}
 {_mrow("Silver")}
-{_mrow("Crude Oil")}
+{_mrow("Brent Crude")}
 {_mrow("Bitcoin")}
-
-{mkt_comment}
 
 ---
 
@@ -1663,10 +1736,8 @@ summary: "{summary}"
 |-------|-------|--------|
 {_mrow("Gold")}
 {_mrow("Silver")}
-{_mrow("Crude Oil")}
+{_mrow("Brent Crude")}
 {_mrow("Bitcoin")}
-
-_Market data auto-fetched._
 
 ---
 
@@ -1726,7 +1797,7 @@ summary: "[DRAFT — fill in summary before publishing]"
 |-------|-------|--------|
 | Gold | [price] | [change]% |
 | Silver | [price] | [change]% |
-| Crude Oil | [price] | [change]% |
+| Brent Crude | [price] | [change]% |
 | Bitcoin | [price] | [change]% |
 
 [Market commentary]
