@@ -3,3 +3,5 @@ anthropic
 openai
 google-genai
 markdown
+exa-py
+tavily-python

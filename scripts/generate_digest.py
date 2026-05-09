@@ -139,7 +139,7 @@ CFG = {
 
 def _openai_compatible_call(
     api_key_env: str, base_url_key: str, model_cfg_key: str, prompt: str,
-    timeout: float = 90.0, max_tokens: int = 2048,
+    timeout: float = 180.0, max_tokens: int = 2048,
     extra_body: Optional[dict] = None,
 ) -> str:
     """
@@ -1660,7 +1660,7 @@ def _make_level1(prompt: str) -> list:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
-                              http_options={"timeout": 120})
+                              http_options={"timeout": 120000})
         resp = client.models.generate_content(
             model=CFG["GEMINI_MODEL"],
             contents=prompt,
@@ -1673,7 +1673,7 @@ def _make_level1(prompt: str) -> list:
     def _openai() -> str:
         """OpenAI search-preview model — built-in web search."""
         from openai import OpenAI
-        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=120.0)
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=180.0)
         resp = client.chat.completions.create(
             model=CFG["OPENAI_SEARCH_MODEL"],
             messages=[{"role": "user", "content": prompt}],
@@ -1684,28 +1684,27 @@ def _make_level1(prompt: str) -> list:
         """Perplexity via OpenRouter — native web search."""
         return _openai_compatible_call(
             "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
-            "OPENROUTER_SEARCH_MODEL", prompt, timeout=120.0,
+            "OPENROUTER_SEARCH_MODEL", prompt, timeout=180.0,
         )
 
     def _deepseek() -> str:
         """DeepSeek v4 — strong reasoning, uses pre-fetched data well."""
         return _openai_compatible_call(
             "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
-            "DEEPSEEK_MODEL", prompt, timeout=120.0,
-            extra_body={"thinking": {"type": "disabled"}},
+            "DEEPSEEK_MODEL", prompt, timeout=180.0,
         )
 
     def _xai() -> str:
         """xAI Grok — has real-time X/Twitter data access."""
         return _openai_compatible_call(
             "XAI_API_KEY", "XAI_BASE_URL",
-            "XAI_MODEL", prompt, timeout=120.0,
+            "XAI_MODEL", prompt, timeout=180.0,
         )
 
     def _claude() -> str:
         """Claude with web search tool."""
         import anthropic
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=180.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
             max_tokens=2048,
@@ -1724,7 +1723,7 @@ def _make_level1(prompt: str) -> list:
             return ""
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=120.0)
+            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=180.0)
             resp = client.chat.completions.create(
                 model=CFG["ZAI_MODEL"],
                 max_tokens=2048,
@@ -1810,7 +1809,7 @@ def _make_level2(prompt: str) -> list:
 
     def _claude_data() -> str:
         import anthropic
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=90.0)
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=180.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
             max_tokens=2048,
@@ -1823,7 +1822,7 @@ def _make_level2(prompt: str) -> list:
 
     def _openai_data() -> str:
         from openai import OpenAI
-        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=90.0)
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=180.0)
         resp = client.chat.completions.create(
             model=CFG["OPENAI_MODEL"],
             max_tokens=2048,
@@ -1834,7 +1833,7 @@ def _make_level2(prompt: str) -> list:
     def _gemini_data() -> str:
         from google import genai
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
-                              http_options={"timeout": 90})
+                              http_options={"timeout": 90000})
         resp = client.models.generate_content(
             model=CFG["GEMINI_MODEL"],
             contents=prompt,
@@ -1854,7 +1853,6 @@ def _make_level2(prompt: str) -> list:
         return _openai_compatible_call(
             "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
             "DEEPSEEK_MODEL", prompt,
-            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def _mistral_data() -> str:
@@ -1866,7 +1864,7 @@ def _make_level2(prompt: str) -> list:
     def _groq_data() -> str:
         return _openai_compatible_call(
             "GROQ_API_KEY", "GROQ_BASE_URL",
-            "GROQ_MODEL", prompt, timeout=60.0,
+            "GROQ_MODEL", prompt, timeout=180.0,
         )
 
     def _xai_data() -> str:
@@ -1885,7 +1883,6 @@ def _make_level2(prompt: str) -> list:
         return _openai_compatible_call(
             "MOONSHOT_AI_API_KEY", "MOONSHOT_BASE_URL",
             "MOONSHOT_MODEL", prompt,
-            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def _minimax_data() -> str:
@@ -1901,7 +1898,7 @@ def _make_level2(prompt: str) -> list:
             return ""
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=90.0)
+            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=180.0)
             resp = client.chat.completions.create(
                 model=CFG["ZAI_MODEL"],
                 max_tokens=2048,
