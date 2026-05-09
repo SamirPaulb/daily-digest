@@ -3,7 +3,16 @@ name: Generate Daily Digest
 on:
   schedule:
     - cron: '0 23 * * *'    # 04:30 IST = 23:00 UTC (previous day)
-  workflow_dispatch:        # manual trigger
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (validates all APIs, no output written)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -57,8 +66,19 @@ jobs:
           NEWS_API_KEY:       ${{ secrets.NEWS_API_KEY }}
           GNEWS_API_KEY:      ${{ secrets.GNEWS_API_KEY }}
           CURRENTS_API_KEY:   ${{ secrets.CURRENTS_API_KEY }}
-          FINNHUB_API_KEY:    ${{ secrets.FINNHUB_API_KEY }}
+          MEDIASTACK_API_KEY: ${{ secrets.MEDIASTACK_API_KEY }}
+          NYTIMES_API_KEY:    ${{ secrets.NYTIMES_API_KEY }}
+          FINNHUB_API_KEY:       ${{ secrets.FINNHUB_API_KEY }}
           ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+          DEEPSEEK_API_KEY:    ${{ secrets.DEEPSEEK_API_KEY }}
+          MISTRAL_API_KEY:     ${{ secrets.MISTRAL_API_KEY }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          XAI_API_KEY:         ${{ secrets.XAI_API_KEY }}
+          FIREWORKS_API_KEY:   ${{ secrets.FIREWORKS_API_KEY }}
+          MOONSHOT_AI_API_KEY: ${{ secrets.MOONSHOT_AI_API_KEY }}
+          MINIMAX_API_KEY:     ${{ secrets.MINIMAX_API_KEY }}
+          ZAI_API_KEY:         ${{ secrets.ZAI_API_KEY }}
+          # Model names (from Variables — update when deprecated, no code change)
           CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
           CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}
           OPENAI_SEARCH_MODEL:      ${{ vars.OPENAI_SEARCH_MODEL }}
@@ -66,9 +86,35 @@ jobs:
           GEMINI_MODEL:             ${{ vars.GEMINI_MODEL }}
           OPENROUTER_SEARCH_MODEL:  ${{ vars.OPENROUTER_SEARCH_MODEL }}
           OPENROUTER_FREE_MODEL:    ${{ vars.OPENROUTER_FREE_MODEL }}
+          DEEPSEEK_MODEL:           ${{ vars.DEEPSEEK_MODEL }}
+          XAI_MODEL:                ${{ vars.XAI_MODEL }}
+          GROQ_MODEL:               ${{ vars.GROQ_MODEL }}
+          MISTRAL_MODEL:            ${{ vars.MISTRAL_MODEL }}
+          FIREWORKS_MODEL:          ${{ vars.FIREWORKS_MODEL }}
+          MOONSHOT_MODEL:           ${{ vars.MOONSHOT_MODEL }}
+          MINIMAX_MODEL:            ${{ vars.MINIMAX_MODEL }}
+          ZAI_MODEL:                ${{ vars.ZAI_MODEL }}
           GITHUB_MODEL:             ${{ vars.GITHUB_MODEL }}
+          # Base URLs (from Variables — update if provider changes endpoint)
+          OPENAI_BASE_URL:          ${{ vars.OPENAI_BASE_URL }}
+          OPENROUTER_BASE_URL:      ${{ vars.OPENROUTER_BASE_URL }}
+          DEEPSEEK_BASE_URL:        ${{ vars.DEEPSEEK_BASE_URL }}
+          XAI_BASE_URL:             ${{ vars.XAI_BASE_URL }}
+          GROQ_BASE_URL:            ${{ vars.GROQ_BASE_URL }}
+          MISTRAL_BASE_URL:         ${{ vars.MISTRAL_BASE_URL }}
+          FIREWORKS_BASE_URL:       ${{ vars.FIREWORKS_BASE_URL }}
+          MOONSHOT_BASE_URL:        ${{ vars.MOONSHOT_BASE_URL }}
+          MINIMAX_BASE_URL:         ${{ vars.MINIMAX_BASE_URL }}
+          ZAI_BASE_URL:             ${{ vars.ZAI_BASE_URL }}
+          GITHUB_MODELS_BASE_URL:   ${{ vars.GITHUB_MODELS_BASE_URL }}
+          # Always available in Actions
           GITHUB_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/generate_digest.py
+        run: |
+          if [ "${{ inputs.test_mode }}" = "true" ]; then
+            python scripts/generate_digest.py --test
+          else
+            python scripts/generate_digest.py
+          fi
 
       - name: Commit generated files
         run: |

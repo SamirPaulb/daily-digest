@@ -58,7 +58,6 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-import urllib.error
 import feedparser
 import markdown as md_lib
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -91,16 +90,80 @@ def _env(key: str, default: str) -> str:
     """Return env var value, falling back to default if unset or empty."""
     return os.environ.get(key) or default
 
+# ──────────────────────────────────────────────────────────────────────────────
+# All configurable variables — change via GitHub Variables, never touch code.
+#
+# MODEL NAMES: Update when a provider deprecates a model.
+# BASE URLS:   Update if a provider changes their API endpoint.
+# API KEYS:    Set as GitHub Secrets (read from env at runtime).
+#
+# To update: GitHub → Settings → Variables → Actions → edit the variable.
+# ──────────────────────────────────────────────────────────────────────────────
+
 CFG = {
+    # ── AI Provider Models ────────────────────────────────────────────────
+    # Level 1 (search-capable, ranked by quality):
+    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
+    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4o-mini-search-preview-2025-03-11"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/sonar"),
+    "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
+    "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
     "CLAUDE_SEARCH_TOOL":      _env("CLAUDE_SEARCH_TOOL",      "web_search_20250305"),
-    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4o-mini-search-preview"),
+
+    # Level 2 (standard, ranked by quality — same models, no search):
     "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4o-mini"),
-    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/llama-3.1-sonar-small-128k-online"),
-    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "google/gemini-2.0-flash-exp:free"),
+    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "google/gemini-2.0-flash:free"),
+    "GROQ_MODEL":              _env("GROQ_MODEL",              "llama-3.3-70b-versatile"),
+    "MISTRAL_MODEL":           _env("MISTRAL_MODEL",           "mistral-small-latest"),
+    "FIREWORKS_MODEL":         _env("FIREWORKS_MODEL",          "accounts/fireworks/models/deepseek-v3p1"),
+    "MOONSHOT_MODEL":          _env("MOONSHOT_MODEL",           "kimi-k2.6"),
+    "MINIMAX_MODEL":           _env("MINIMAX_MODEL",            "MiniMax-M2.5"),
+    "ZAI_MODEL":               _env("ZAI_MODEL",               "glm-4.5"),
     "GITHUB_MODEL":            _env("GITHUB_MODEL",            "gpt-4o-mini"),
+
+    # ── AI Provider Base URLs ─────────────────────────────────────────────
+    "OPENAI_BASE_URL":         _env("OPENAI_BASE_URL",         "https://api.openai.com/v1"),
+    "OPENROUTER_BASE_URL":     _env("OPENROUTER_BASE_URL",     "https://openrouter.ai/api/v1"),
+    "DEEPSEEK_BASE_URL":       _env("DEEPSEEK_BASE_URL",       "https://api.deepseek.com"),
+    "XAI_BASE_URL":            _env("XAI_BASE_URL",            "https://api.x.ai/v1"),
+    "GROQ_BASE_URL":           _env("GROQ_BASE_URL",           "https://api.groq.com/openai/v1"),
+    "MISTRAL_BASE_URL":        _env("MISTRAL_BASE_URL",        "https://api.mistral.ai/v1"),
+    "FIREWORKS_BASE_URL":      _env("FIREWORKS_BASE_URL",      "https://api.fireworks.ai/inference/v1"),
+    "MOONSHOT_BASE_URL":       _env("MOONSHOT_BASE_URL",       "https://api.moonshot.ai/v1"),
+    "MINIMAX_BASE_URL":        _env("MINIMAX_BASE_URL",        "https://api.minimax.io/v1"),
+    "ZAI_BASE_URL":            _env("ZAI_BASE_URL",            "https://api.z.ai/api/paas/v4"),
+    "GITHUB_MODELS_BASE_URL":  _env("GITHUB_MODELS_BASE_URL",  "https://models.inference.ai.azure.com"),
 }
+
+
+def _openai_compatible_call(
+    api_key_env: str, base_url_key: str, model_cfg_key: str, prompt: str,
+    timeout: float = 90.0, max_tokens: int = 2048,
+    extra_body: Optional[dict] = None,
+) -> str:
+    """
+    Generic caller for any OpenAI-compatible API.
+    Used by: DeepSeek, Mistral, Groq, xAI, Fireworks, Moonshot, MiniMax, OpenRouter.
+    Pure try/except — never raises, returns empty string on any failure.
+    """
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key:
+        return ""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=CFG[base_url_key], timeout=timeout)
+        kwargs: dict[str, Any] = {
+            "model": CFG[model_cfg_key],
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+        resp = client.chat.completions.create(**kwargs)
+        return resp.choices[0].message.content or ""
+    except Exception:
+        return ""
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging — timestamps make it easy to spot slow steps in CI logs
@@ -269,16 +332,16 @@ def _prompt_with_rich_data(
                          Perplexity) — they can supplement the data with their own search.
     search_hint=False → for standard models and Ollama — data is self-contained.
     """
-    hn_lines = "\n".join(f"  - {h}" for h in hn[:8]) or "  [fetch failed]"
+    hn_lines = "\n".join(f"  - {h}" for h in hn[:10]) or "  [fetch failed]"
 
     def _sec(items: list, label: str) -> str:
         if items:
-            return "\n".join(f"  - {item}" for item in items[:5])
+            return "\n".join(f"  - {item}" for item in items[:8])
         hint = f"search for today's {label} stories" if search_hint else "use general knowledge"
         return f"  [no pre-fetched data — {hint}]"
 
     # Blend tech search results with HN headlines for the tech section
-    tech_combined = tech_news[:3] + [f"**{h}**" for h in hn[:3]]
+    tech_combined = tech_news[:5] + [f"**{h}**" for h in hn[:5]]
 
     supplement = (
         "\n\nYou have live web search — use it to fill sections like Startups & Funding, "
@@ -1282,12 +1345,129 @@ def _fetch_finnhub_news(section: str = "global", n: int = 4) -> list:
         return []
 
 
+# Mediastack API — section to category/country mapping
+# Ref: https://mediastack.com/documentation
+# Categories: general, business, entertainment, health, science, sports, technology
+_MEDIASTACK_PARAMS: dict[str, dict] = {
+    "global": {"categories": "general,business", "languages": "en", "limit": "8"},
+    "india":  {"countries": "in", "languages": "en", "limit": "8"},
+    "tech":   {"categories": "technology", "languages": "en", "limit": "8"},
+}
+
+
+def _fetch_mediastack(section: str = "global", n: int = 4) -> list:
+    """
+    Fetch news from Mediastack API.
+    Free tier: 100 requests/month, 30-min delay, HTTP only.
+    Ref: https://mediastack.com/documentation
+    Response: {data: [{title, description, url, source, category, published_at}]}
+    """
+    api_key = os.environ.get("MEDIASTACK_API_KEY", "")
+    if not api_key:
+        return []
+    params = _MEDIASTACK_PARAMS.get(section, _MEDIASTACK_PARAMS["global"])
+    qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+    # Free plan: HTTP only (no HTTPS)
+    url = f"http://api.mediastack.com/v1/news?access_key={api_key}&{qs}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for art in (data.get("data") or []):
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("description") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc)
+            if h:
+                items.append(h)
+        _log("DATA", f"  Mediastack [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  Mediastack [{section}] failed: {exc}")
+        return []
+
+
+# NYTimes Top Stories API — section mapping
+# Ref: https://developer.nytimes.com/docs/top-stories-product/1/overview
+# Sections: world, us, technology, business, science, health, sports, arts
+_NYTIMES_SECTION: dict[str, str] = {
+    "global": "world",
+    "india":  "world",
+    "tech":   "technology",
+}
+
+
+def _fetch_nytimes(section: str = "global", n: int = 4) -> list:
+    """
+    Fetch news from NYTimes. Tries Top Stories first, falls back to Most Popular.
+    Free tier: 500 requests/day.
+
+    Top Stories: https://api.nytimes.com/svc/topstories/v2/{section}.json
+    Most Popular: https://api.nytimes.com/svc/mostpopular/v2/viewed/1.json
+    Response: {results: [{title, abstract/url}]}
+    """
+    api_key = os.environ.get("NYTIMES_API_KEY", "")
+    if not api_key:
+        return []
+
+    # Try Top Stories first (section-specific)
+    nyt_section = _NYTIMES_SECTION.get(section, "world")
+    url = f"https://api.nytimes.com/svc/topstories/v2/{nyt_section}.json?api-key={api_key}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for art in (data.get("results") or []):
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("abstract") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  NYTimes TopStories [{section}]: {len(items)} results")
+            return items
+    except Exception as exc:
+        _log("WARN", f"  NYTimes TopStories [{section}] failed: {exc}")
+
+    # Fallback: Most Popular (viewed in last day)
+    url = f"https://api.nytimes.com/svc/mostpopular/v2/viewed/1.json?api-key={api_key}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        items = []
+        for art in (data.get("results") or []):
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("abstract") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc)
+            if h:
+                items.append(h)
+        _log("DATA", f"  NYTimes MostPopular: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  NYTimes MostPopular failed: {exc}")
+        return []
+
+
 def _fetch_free_search(query: str, n: int = 4, section: str = "global") -> list:
     """
     Per-section search fallback chain (no LLM).  Returns first non-empty result.
 
     Tier 1 — paid APIs (best freshness, structured data):
-      NewsAPI → GNews → Currents → Finnhub News
+      NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub News
     Tier 2 — Exa deep neural search (paid, requires EXA_API_KEY):
       Exa
     Tier 3 — free, no key (RSS feeds from reputable sources):
@@ -1304,7 +1484,13 @@ def _fetch_free_search(query: str, n: int = 4, section: str = "global") -> list:
     results = _fetch_gnews(section, n)
     if results:
         return results
+    results = _fetch_nytimes(section, n)
+    if results:
+        return results
     results = _fetch_currents(section, n)
+    if results:
+        return results
+    results = _fetch_mediastack(section, n)
     if results:
         return results
     results = _fetch_finnhub_news(section, n)
@@ -1465,12 +1651,61 @@ summary: "{summary}"
 
 def _make_level1(prompt: str) -> list:
     """
-    Search-capable providers: each receives the pre-fetched rich context prompt
-    AND can use its own web search to add depth or verify details.
+    Level 1: BEST models with web search enabled.
+    Ranked by quality and search capability.
+    All have access to pre-fetched data AND can search for more.
     """
+    def _gemini() -> str:
+        """Gemini with Google Search grounding — best for real-time news."""
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
+                              http_options={"timeout": 120})
+        resp = client.models.generate_content(
+            model=CFG["GEMINI_MODEL"],
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            ),
+        )
+        return resp.text or ""
+
+    def _openai() -> str:
+        """OpenAI search-preview model — built-in web search."""
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=120.0)
+        resp = client.chat.completions.create(
+            model=CFG["OPENAI_SEARCH_MODEL"],
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content or ""
+
+    def _openrouter_search() -> str:
+        """Perplexity via OpenRouter — native web search."""
+        return _openai_compatible_call(
+            "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
+            "OPENROUTER_SEARCH_MODEL", prompt, timeout=120.0,
+        )
+
+    def _deepseek() -> str:
+        """DeepSeek v4 — strong reasoning, uses pre-fetched data well."""
+        return _openai_compatible_call(
+            "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
+            "DEEPSEEK_MODEL", prompt, timeout=120.0,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+    def _xai() -> str:
+        """xAI Grok — has real-time X/Twitter data access."""
+        return _openai_compatible_call(
+            "XAI_API_KEY", "XAI_BASE_URL",
+            "XAI_MODEL", prompt, timeout=120.0,
+        )
+
     def _claude() -> str:
+        """Claude with web search tool."""
         import anthropic
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=90.0)
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
             max_tokens=2048,
@@ -1482,47 +1717,34 @@ def _make_level1(prompt: str) -> list:
                 return block.text
         return ""
 
-    def _openai() -> str:
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=90.0)
-        resp = client.chat.completions.create(
-            model=CFG["OPENAI_SEARCH_MODEL"],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.choices[0].message.content or ""
+    def _zai_search() -> str:
+        """Z.AI GLM with web_search enabled."""
+        api_key = os.environ.get("ZAI_API_KEY", "")
+        if not api_key:
+            return ""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=120.0)
+            resp = client.chat.completions.create(
+                model=CFG["ZAI_MODEL"],
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+                tools=[{"type": "web_search", "web_search": {"enable": True}}],
+            )
+            return resp.choices[0].message.content or ""
+        except Exception:
+            return ""
 
-    def _gemini() -> str:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
-                              http_options={"timeout": 90})
-        resp = client.models.generate_content(
-            model=CFG["GEMINI_MODEL"],
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            ),
-        )
-        return resp.text or ""
-
-    def _openrouter() -> str:
-        from openai import OpenAI
-        client = OpenAI(
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            base_url="https://openrouter.ai/api/v1",
-            timeout=90.0,
-        )
-        resp = client.chat.completions.create(
-            model=CFG["OPENROUTER_SEARCH_MODEL"],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.choices[0].message.content or ""
-
+    # Ranked: Gemini (Google Search) > OpenAI (search-preview) > Perplexity >
+    # Z.AI GLM (web_search) > DeepSeek > Grok (X data) > Claude
     return [
+        ("gemini",     "GEMINI_API_KEY",     _gemini),
+        ("openai",     "OPENAI_API_KEY",     _openai),
+        ("openrouter", "OPENROUTER_API_KEY", _openrouter_search),
+        ("zai",        "ZAI_API_KEY",        _zai_search),
+        ("deepseek",   "DEEPSEEK_API_KEY",   _deepseek),
+        ("xai",        "XAI_API_KEY",        _xai),
         ("claude",     "ANTHROPIC_API_KEY",  _claude),
-        ("openai",     "OPENAI_API_KEY",      _openai),
-        ("gemini",     "GEMINI_API_KEY",      _gemini),
-        ("openrouter", "OPENROUTER_API_KEY",  _openrouter),
     ]
 
 
@@ -1567,7 +1789,7 @@ def _github_models_call(prompt: str) -> str:
         "max_tokens": 2048,
     }).encode()
     req = urllib.request.Request(
-        "https://models.inference.ai.azure.com/chat/completions",
+        f"{CFG['GITHUB_MODELS_BASE_URL']}/chat/completions",
         data=body,
         headers={
             "Authorization": f"Bearer {token}",
@@ -1620,27 +1842,98 @@ def _make_level2(prompt: str) -> list:
         return resp.text or ""
 
     def _openrouter_data() -> str:
-        from openai import OpenAI
-        client = OpenAI(
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            base_url="https://openrouter.ai/api/v1",
-            timeout=90.0,
+        return _openai_compatible_call(
+            "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
+            "OPENROUTER_FREE_MODEL", prompt,
         )
-        resp = client.chat.completions.create(
-            model=CFG["OPENROUTER_FREE_MODEL"],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.choices[0].message.content or ""
 
     def _github_models_data() -> str:
         return _github_models_call(prompt)
 
+    def _deepseek_data() -> str:
+        return _openai_compatible_call(
+            "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
+            "DEEPSEEK_MODEL", prompt,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+    def _mistral_data() -> str:
+        return _openai_compatible_call(
+            "MISTRAL_API_KEY", "MISTRAL_BASE_URL",
+            "MISTRAL_MODEL", prompt,
+        )
+
+    def _groq_data() -> str:
+        return _openai_compatible_call(
+            "GROQ_API_KEY", "GROQ_BASE_URL",
+            "GROQ_MODEL", prompt, timeout=60.0,
+        )
+
+    def _xai_data() -> str:
+        return _openai_compatible_call(
+            "XAI_API_KEY", "XAI_BASE_URL",
+            "XAI_MODEL", prompt,
+        )
+
+    def _fireworks_data() -> str:
+        return _openai_compatible_call(
+            "FIREWORKS_API_KEY", "FIREWORKS_BASE_URL",
+            "FIREWORKS_MODEL", prompt,
+        )
+
+    def _moonshot_data() -> str:
+        return _openai_compatible_call(
+            "MOONSHOT_AI_API_KEY", "MOONSHOT_BASE_URL",
+            "MOONSHOT_MODEL", prompt,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+    def _minimax_data() -> str:
+        return _openai_compatible_call(
+            "MINIMAX_API_KEY", "MINIMAX_BASE_URL",
+            "MINIMAX_MODEL", prompt,
+        )
+
+    def _zai_data() -> str:
+        """Z.AI (GLM) — supports web_search tool via tools parameter."""
+        api_key = os.environ.get("ZAI_API_KEY", "")
+        if not api_key:
+            return ""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=90.0)
+            resp = client.chat.completions.create(
+                model=CFG["ZAI_MODEL"],
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+                tools=[{"type": "web_search", "web_search": {"enable": True}}],
+            )
+            return resp.choices[0].message.content or ""
+        except Exception:
+            # Retry without web_search if tool not supported
+            return _openai_compatible_call(
+                "ZAI_API_KEY", "ZAI_BASE_URL",
+                "ZAI_MODEL", prompt,
+            )
+
+    # Ranked by output quality (best first):
+    # Tier 1: Best reasoning/instruction-following
+    # Tier 2: Fast, reliable
+    # Tier 3: Free/fallback options
     return [
-        ("claude+data",     "ANTHROPIC_API_KEY",  _claude_data),
-        ("openai+data",     "OPENAI_API_KEY",      _openai_data),
         ("gemini+data",     "GEMINI_API_KEY",      _gemini_data),
+        ("openai+data",     "OPENAI_API_KEY",      _openai_data),
+        ("deepseek+data",   "DEEPSEEK_API_KEY",    _deepseek_data),
+        ("zai+data",        "ZAI_API_KEY",         _zai_data),
+        ("claude+data",     "ANTHROPIC_API_KEY",   _claude_data),
+        ("groq+data",       "GROQ_API_KEY",        _groq_data),
+        ("xai+data",        "XAI_API_KEY",         _xai_data),
+        ("mistral+data",    "MISTRAL_API_KEY",     _mistral_data),
         ("openrouter+data", "OPENROUTER_API_KEY",  _openrouter_data),
-        # Level 2 urllib fallback — has real market data in prompt, no extra secrets
+        ("fireworks+data",  "FIREWORKS_API_KEY",   _fireworks_data),
+        ("moonshot+data",   "MOONSHOT_AI_API_KEY", _moonshot_data),
+        ("minimax+data",    "MINIMAX_API_KEY",     _minimax_data),
+        # Always available in GitHub Actions — final cloud fallback
         ("github-models",   "GITHUB_TOKEN",        _github_models_data),
     ]
 
@@ -2086,7 +2379,7 @@ def main() -> None:
         real_markets = _build_real_markets(market)
         # Find and replace: everything from "## Markets" to the next "---" or "## "
         markets_pattern = re.compile(
-            r"## Markets.*?(?=\n---|\n## (?!Markets))",
+            r"## Markets.*?(?=\n---|\n## (?!Markets)|$)",
             re.DOTALL,
         )
         if markets_pattern.search(result):
@@ -2105,8 +2398,9 @@ def main() -> None:
         """Fetch top headlines from diverse RSS feeds for Further Reading section."""
         import random
         links: list[tuple[str, str]] = []  # (title, url)
-        random.shuffle(_FURTHER_READING_FEEDS)  # Randomize to get variety each day
-        for feed_url in _FURTHER_READING_FEEDS:
+        feeds = list(_FURTHER_READING_FEEDS)  # Copy to avoid mutating module constant
+        random.shuffle(feeds)
+        for feed_url in feeds:
             if len(links) >= n:
                 break
             try:
@@ -2135,7 +2429,7 @@ def main() -> None:
     further = _fetch_further_reading()
     if further:
         result = result.rstrip() + further
-        _log("INFO", f"  Appended Further Reading ({further.count('[')}) links)")
+        _log("INFO", f"  Appended Further Reading ({further.count('- [')} links)")
 
     # ── Convert markdown to HTML and write ────────────────────────────────
     author = _SOURCE_AUTHOR.get(source, "")
@@ -2204,5 +2498,103 @@ def main() -> None:
     _log("DONE", f"Manifest updated — {len(manifest)} entries")
 
 
+def test_all() -> None:
+    """
+    Test ALL providers and report pass/fail for each.
+    Usage: python scripts/generate_digest.py --test
+    Does NOT write any output file. Just validates connectivity.
+    """
+    _log("TEST", "=" * 60)
+    _log("TEST", "TESTING ALL PROVIDERS — verifying API keys and connectivity")
+    _log("TEST", "=" * 60)
+
+    # ── Test market data sources ──────────────────────────────────────────
+    _log("TEST", "\n─── Market Data Sources ───")
+    for name, fn in [
+        ("Finnhub", lambda: _fetch_finnhub_quote("AAPL")),
+        ("Alpha Vantage", lambda: _fetch_alphavantage_quote("AAPL")),
+        ("Yahoo Finance", lambda: _fetch_yahoo_quote("AAPL")),
+        ("NSE (Nifty)", _fetch_nse_nifty),
+        ("BSE (Sensex)", _fetch_bse_sensex),
+    ]:
+        try:
+            result = fn()
+            if result:
+                _log("PASS", f"  {name}: {result}")
+            else:
+                _log("FAIL", f"  {name}: returned None (key missing or API down)")
+        except Exception as e:
+            _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
+
+    # ── Test news data sources ────────────────────────────────────────────
+    _log("TEST", "\n─── News Data Sources ───")
+    for name, fn in [
+        ("Tavily", lambda: _fetch_tavily_section("global", f"world news {DATE_HUMAN}")),
+        ("NewsAPI", lambda: _fetch_newsapi("global", 2)),
+        ("GNews", lambda: _fetch_gnews("global", 2)),
+        ("NYTimes", lambda: _fetch_nytimes("global", 2)),
+        ("Currents", lambda: _fetch_currents("global", 2)),
+        ("Mediastack", lambda: _fetch_mediastack("global", 2)),
+        ("Finnhub News", lambda: _fetch_finnhub_news("global", 2)),
+        ("Exa", lambda: _fetch_exa_headlines("world news today", 2)),
+        ("RSS (BBC)", lambda: _fetch_rss_section("global", 2)),
+    ]:
+        try:
+            result = fn()
+            if result:
+                _log("PASS", f"  {name}: {len(result)} items — {result[0][:80]}...")
+            else:
+                _log("FAIL", f"  {name}: returned empty (key missing or API down)")
+        except Exception as e:
+            _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
+
+    # ── Test AI providers ─────────────────────────────────────────────────
+    _log("TEST", "\n─── AI Providers (Level 1 — search-capable) ───")
+    test_prompt = (
+        "Respond with exactly: TEST_OK followed by today's date. "
+        "Nothing else. No explanation."
+    )
+
+    # Level 1 providers
+    level1 = _make_level1(test_prompt)
+    for name, key_env, fn in level1:
+        key = os.environ.get(key_env or "", "")
+        if not key and key_env:
+            _log("SKIP", f"  {name}: {key_env} not set")
+            continue
+        try:
+            result = fn()
+            if result and len(result) > 3:
+                _log("PASS", f"  {name}: {result[:100]}")
+            else:
+                _log("FAIL", f"  {name}: empty or too short response")
+        except Exception as e:
+            _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
+
+    _log("TEST", "\n─── AI Providers (Level 2 — standard) ───")
+    level2 = _make_level2(test_prompt)
+    for name, key_env, fn in level2:
+        key = os.environ.get(key_env or "", "")
+        if not key and key_env:
+            _log("SKIP", f"  {name}: {key_env} not set")
+            continue
+        try:
+            result = fn()
+            if result and len(result) > 3:
+                _log("PASS", f"  {name}: {result[:100]}")
+            else:
+                _log("FAIL", f"  {name}: empty or too short response")
+        except Exception as e:
+            _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
+
+    # ── Summary ───────────────────────────────────────────────────────────
+    _log("TEST", "\n" + "=" * 60)
+    _log("TEST", "TEST COMPLETE — check PASS/FAIL above for each provider")
+    _log("TEST", "=" * 60)
+
+
 if __name__ == "__main__":
-    main()
+    if "--test" in sys.argv:
+        test_all()
+    else:
+        main()
