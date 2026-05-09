@@ -9,9 +9,11 @@ Automated daily briefing — markets, news, AI, startups, investing, careers. Ge
 ```
 4:30 AM IST daily (or manual trigger)
     ↓
-Fetch market data (Finnhub → Alpha Vantage → Yahoo Finance → Massive)
+Fetch market data (Finnhub → Alpha Vantage → Yahoo Finance → Twelve Data → Massive)
     ↓
-Fetch top gainers/losers (NSE India + Alpha Vantage US)
+Fetch top gainers/losers
+  US:    Yahoo screener (mcap ≥ $10B) → Alpha Vantage
+  India: NSE equity-stockIndices (Nifty 50)
     ↓
 Fetch news (Tavily → NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub → Exa → RSS)
     ↓
@@ -38,6 +40,14 @@ Main blog fetches HTML via raw.githubusercontent.com
 | 4 | Blank template | Always succeeds |
 | Workflow | GitHub AI Inference → Vercel AI Gateway → Ollama install | Action-level fallbacks |
 
+## Market Data Sources
+
+| Data | Primary | Fallback chain |
+|------|---------|----------------|
+| Index prices | Finnhub | Alpha Vantage → Yahoo Finance → Twelve Data → Massive |
+| US movers | Yahoo screener (mcap ≥ $10B) | Alpha Vantage TOP_GAINERS_LOSERS |
+| India movers | NSE equity-stockIndices | Skipped if unavailable (geo-blocked from non-Indian IPs) |
+
 ## Secrets (GitHub → Settings → Secrets → Actions)
 
 ### Required (at least one AI + one news)
@@ -47,12 +57,13 @@ Main blog fetches HTML via raw.githubusercontent.com
 ### Recommended
 - `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `FIREWORKS_API_KEY` — AI redundancy
 - `TAVILY_API_KEY`, `NEWS_API_KEY`, `GNEWS_API_KEY` — news sources
-- `ALPHAVANTAGE_API_KEY` — market data backup
+- `ALPHAVANTAGE_API_KEY` — market data + US movers backup
 
 ### Optional (more redundancy)
 - `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `ZAI_API_KEY`
 - `MOONSHOT_AI_API_KEY`, `MINIMAX_API_KEY`
 - `NYTIMES_API_KEY`, `CURRENTS_API_KEY`, `MEDIASTACK_API_KEY`, `EXA_API_KEY`
+- `TWELVEDATA_API_KEY` — market data backup (800 credits/day free)
 - `MASSIVE_API_KEY` — market data (crypto/forex only on free plan)
 - `VERCEL_AI_GATEWAY_API_KEY` — workflow fallback
 
@@ -67,7 +78,7 @@ All optional. Override model names when a provider deprecates one — no code ch
 GEMINI_MODEL, OPENAI_MODEL, OPENAI_SEARCH_MODEL, DEEPSEEK_MODEL,
 GROQ_MODEL, MISTRAL_MODEL, XAI_MODEL, ZAI_MODEL, FIREWORKS_MODEL,
 MOONSHOT_MODEL, MINIMAX_MODEL, OPENROUTER_SEARCH_MODEL, OPENROUTER_FREE_MODEL,
-GITHUB_MODEL
+GITHUB_MODEL, TWELVEDATA_BASE_URL
 ```
 
 ## Local Development

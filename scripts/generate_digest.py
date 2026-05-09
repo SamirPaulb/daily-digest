@@ -42,6 +42,7 @@ API KEYS — set as GitHub Secrets:
   GNEWS_API_KEY    — gnews.io (secondary per-section news fallback)
   CURRENTS_API_KEY — currentsapi.services (tertiary per-section news fallback)
   FINNHUB_API_KEY  — finnhub.io (Finnhub market news + quote fallback for indices)
+  TWELVEDATA_API_KEY — twelvedata.com (backup quote source for indices/stocks/crypto/forex)
   (set any subset — only providers with keys are tried)
 
 NOTE: GITHUB_TOKEN is auto-injected in Actions and used by the Level 2
@@ -54,6 +55,7 @@ import html as html_lib
 import json
 import os
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -135,6 +137,9 @@ CFG = {
     "MINIMAX_BASE_URL":        _env("MINIMAX_BASE_URL",        "https://api.minimax.io/v1"),
     "ZAI_BASE_URL":            _env("ZAI_BASE_URL",            "https://api.z.ai/api/paas/v4"),
     "GITHUB_MODELS_BASE_URL":  _env("GITHUB_MODELS_BASE_URL",  "https://models.github.ai/inference"),
+
+    # ── Market Data Provider URLs ─────────────────────────────────────────
+    "TWELVEDATA_BASE_URL":     _env("TWELVEDATA_BASE_URL",     "https://api.twelvedata.com"),
 }
 
 
@@ -746,6 +751,54 @@ def _fetch_massive_quote(sym: str) -> Optional[dict]:
     return None
 
 
+# Twelve Data symbol mapping: Yahoo format → Twelve Data format
+# Ref: https://twelvedata.com/docs (free plan: 800 credits/day, 1 credit/quote)
+_TWELVEDATA_SYM_MAP: dict[str, str] = {
+    "^GSPC":    "SPX",
+    "^IXIC":    "IXIC",
+    "^DJI":     "DJI",
+    "^N225":    "NI225",
+    "^FTSE":    "UKXGBP",
+    "^GDAXI":   "DEU40EUR",
+    "GC=F":     "XAU/USD",
+    "SI=F":     "XAG/USD",
+    "BZ=F":     "BRN/USD",
+    "BTC-USD":  "BTC/USD",
+    "USDINR=X": "USD/INR",
+}
+
+
+def _fetch_twelvedata_quote(sym: str) -> Optional[dict]:
+    """
+    Fetch a quote from Twelve Data (backup source).
+    Free plan: 800 credits/day, 8 calls/minute. 1 credit per /quote call.
+    Returns {"price": "...", "change": "..."} or None on error/missing key.
+    Ref: https://twelvedata.com/docs
+    """
+    api_key = os.environ.get("TWELVEDATA_API_KEY", "")
+    if not api_key:
+        return None
+    td_sym = _TWELVEDATA_SYM_MAP.get(sym)
+    if not td_sym:
+        return None
+    try:
+        base_url = CFG["TWELVEDATA_BASE_URL"]
+        url = f"{base_url}/quote?symbol={urllib.parse.quote(td_sym)}&apikey={api_key}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        if data.get("code"):  # Error response
+            return None
+        close = float(data.get("close") or 0)
+        prev = float(data.get("previous_close") or close) or close
+        chg = ((close - prev) / prev * 100) if prev else 0.0
+        if close:
+            return {"price": f"{close:,.2f}", "change": f"{chg:+.2f}%"}
+    except Exception as exc:
+        _log("WARN", f"  TwelveData quote ({sym}) failed: {exc}")
+    return None
+
+
 def _fetch_alphavantage_quote(sym: str) -> Optional[dict]:
     """
     Fetch a quote from Alpha Vantage (secondary source).
@@ -884,7 +937,7 @@ def _fetch_market_data() -> dict:
     ]
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
-        # Priority: Finnhub → Alpha Vantage → Yahoo → Massive
+        # Priority: Finnhub → Alpha Vantage → Yahoo → TwelveData → Massive
         q = _fetch_finnhub_quote(sym)
         if q:
             _log("DATA", f"  {label} (Finnhub): {q['price']} ({q['change']})")
@@ -896,6 +949,10 @@ def _fetch_market_data() -> dict:
         q = _fetch_yahoo_quote(sym)
         if q:
             _log("DATA", f"  {label} (Yahoo): {q['price']} ({q['change']})")
+            return label, q
+        q = _fetch_twelvedata_quote(sym)
+        if q:
+            _log("DATA", f"  {label} (TwelveData): {q['price']} ({q['change']})")
             return label, q
         q = _fetch_massive_quote(sym)
         if q:
@@ -2396,7 +2453,46 @@ def main() -> None:
 
     # ── Fetch top gainers/losers for markets ─────────────────────────────
     def _fetch_us_movers() -> tuple[list, list]:
-        """Fetch US top gainers/losers from Alpha Vantage. Returns (gainers, losers)."""
+        """Fetch S&P 500 top gainers/losers. Yahoo screener → Alpha Vantage fallback."""
+        _ctx = ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = ssl.CERT_NONE
+
+        # ─ Primary: Yahoo Finance screener (day_gainers/day_losers, filter mcap>=10B) ─
+        def _yahoo_screener() -> tuple[list, list]:
+            gainers, losers = [], []
+            for scr_id, target, sign in [("day_gainers", gainers, "+"), ("day_losers", losers, "-")]:
+                url = f"https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds={scr_id}&count=50"
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"})
+                with urllib.request.urlopen(req, timeout=15, context=_ctx) as resp:
+                    data = json.load(resp)
+                result = data.get("finance", {}).get("result", [])
+                if not result:
+                    continue
+                quotes = result[0].get("quotes", [])
+                for q in quotes:
+                    # Market cap >= $10B ≈ S&P 500 constituent
+                    mcap = q.get("marketCap") or 0
+                    if mcap < 10_000_000_000:
+                        continue
+                    sym = q.get("symbol", "")
+                    pct = q.get("regularMarketChangePercent", 0)
+                    if not sym or pct == 0:
+                        continue
+                    target.append((sym, f"{sign}{abs(pct):.1f}%"))
+                    if len(target) >= 5:
+                        break
+            return gainers, losers
+
+        try:
+            g, l = _yahoo_screener()
+            if g or l:
+                _log("DATA", "  US movers (Yahoo screener): OK")
+                return g, l
+        except Exception as exc:
+            _log("WARN", f"  Yahoo screener failed: {exc}")
+
+        # ─ Fallback: Alpha Vantage TOP_GAINERS_LOSERS ─
         api_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
         if not api_key:
             return [], []
@@ -2406,69 +2502,71 @@ def main() -> None:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.load(resp)
             gainers, losers = [], []
-            # Filter: price > $10, volume > 2M — covers top ~250 US stocks
-            def _is_major(item: dict) -> bool:
+            for item in (data.get("top_gainers") or []):
+                ticker = item.get("ticker", "")
                 price = float(item.get("price") or 0)
                 vol = int(item.get("volume") or 0)
-                ticker = item.get("ticker", "")
-                if price < 10 or vol < 2_000_000:
-                    return False
-                if any(ticker.endswith(s) for s in ("W", "+", "Z", "R", "U")):
-                    return False
-                return True
-
-            for item in (data.get("top_gainers") or []):
-                if not _is_major(item):
+                if not ticker or price < 10 or vol < 2_000_000:
                     continue
                 pct = item.get("change_percentage", "0%").replace("%", "")
-                gainers.append((item["ticker"], f"+{float(pct):.1f}%"))
+                gainers.append((ticker, f"+{float(pct):.1f}%"))
                 if len(gainers) >= 5:
                     break
             for item in (data.get("top_losers") or []):
-                if not _is_major(item):
+                ticker = item.get("ticker", "")
+                price = float(item.get("price") or 0)
+                vol = int(item.get("volume") or 0)
+                if not ticker or price < 10 or vol < 2_000_000:
                     continue
                 pct = item.get("change_percentage", "0%").replace("%", "")
-                losers.append((item["ticker"], f"{float(pct):.1f}%"))
+                losers.append((ticker, f"{float(pct):.1f}%"))
                 if len(losers) >= 5:
                     break
+            if gainers or losers:
+                _log("DATA", "  US movers (Alpha Vantage): OK")
             return gainers, losers
         except Exception as exc:
-            _log("WARN", f"  US movers failed: {exc}")
+            _log("WARN", f"  US movers (Alpha Vantage) failed: {exc}")
             return [], []
 
     def _fetch_india_movers() -> tuple[list, list]:
-        """Fetch India Nifty 50 top gainers/losers from NSE. Returns (gainers, losers)."""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
-            "Referer": "https://www.nseindia.com/",
-            "Accept": "application/json",
-        }
-        gainers, losers = [], []
-        for kind, target in [("gainers", gainers), ("losers", losers)]:
-            try:
-                url = f"https://www.nseindia.com/api/live-analysis-variations?index={kind}"
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    data = json.load(resp)
-                # Nifty 50 + Nifty Next 50 = top 100 stocks by market cap
-                combined = []
-                for key in ("NIFTY", "NIFTYNEXT50"):
-                    combined.extend((data.get(key) or {}).get("data") or [])
-                # Deduplicate by symbol, take first occurrence
-                seen = set()
-                for item in combined:
-                    sym = item.get("symbol", "")
-                    if sym in seen or not sym:
-                        continue
-                    seen.add(sym)
-                    pct = float(item.get("perChange") or 0)
-                    sign = "+" if pct >= 0 else ""
-                    target.append((sym, f"{sign}{pct:.1f}%"))
-                    if len(target) >= 5:
-                        break
-            except Exception as exc:
-                _log("WARN", f"  India {kind} failed: {exc}")
-        return gainers, losers
+        """Fetch Nifty 50 top gainers/losers from NSE. Returns (gainers, losers) or empty if unavailable."""
+        # NSE equity-stockIndices: single call, returns all Nifty 50 with % change
+        # May fail from non-Indian IPs (GitHub Actions) — that's OK, section is optional
+        try:
+            nse_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://www.nseindia.com/",
+                "Accept": "application/json",
+            }
+            url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
+            req = urllib.request.Request(url, headers=nse_headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.load(resp)
+            stocks = data.get("data", [])
+            # First entry is the index itself, skip it
+            stocks = [s for s in stocks if s.get("symbol") != "NIFTY 50"]
+            if len(stocks) < 20:
+                return [], []
+            stocks.sort(key=lambda s: float(s.get("pChange") or 0), reverse=True)
+            gainers = []
+            for s in stocks[:5]:
+                sym = s.get("symbol", "")
+                pct = float(s.get("pChange") or 0)
+                if sym and pct > 0:
+                    gainers.append((sym, f"+{pct:.1f}%"))
+            losers = []
+            for s in stocks[-5:]:
+                sym = s.get("symbol", "")
+                pct = float(s.get("pChange") or 0)
+                if sym and pct < 0:
+                    losers.append((sym, f"{pct:.1f}%"))
+            if gainers or losers:
+                _log("DATA", "  India movers (NSE): OK")
+            return gainers, losers
+        except Exception as exc:
+            _log("WARN", f"  India movers (NSE) failed: {exc}")
+            return [], []
 
     # Fetch movers in parallel
     us_gainers, us_losers, india_gainers, india_losers = [], [], [], []
@@ -2498,15 +2596,15 @@ def main() -> None:
 
         india_movers_md = ""
         if india_gainers:
-            india_movers_md += f"\n\nGainers: {_movers_line(india_gainers)}"
+            india_movers_md += f"\n\nNifty 50 Gainers: {_movers_line(india_gainers)}"
         if india_losers:
-            india_movers_md += f"\n\nLosers: {_movers_line(india_losers)}"
+            india_movers_md += f"\n\nNifty 50 Losers: {_movers_line(india_losers)}"
 
         us_movers_md = ""
         if us_gainers:
-            us_movers_md += f"\n\nGainers: {_movers_line(us_gainers)}"
+            us_movers_md += f"\n\nS&P 500 Gainers: {_movers_line(us_gainers)}"
         if us_losers:
-            us_movers_md += f"\n\nLosers: {_movers_line(us_losers)}"
+            us_movers_md += f"\n\nS&P 500 Losers: {_movers_line(us_losers)}"
 
         return f"""## Markets
 
