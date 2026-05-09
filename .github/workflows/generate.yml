@@ -112,7 +112,18 @@ jobs:
           GITHUB_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ inputs.test_mode }}" = "true" ]; then
+            # Install Ollama for test mode
+            curl -fsSL https://ollama.ai/install.sh | sh
+            ollama serve &
+            OLLAMA_PID=$!
+            for i in $(seq 1 30); do
+              curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
+              sleep 1
+            done
+            ollama pull qwen2.5:7b-instruct-q4_K_M
+            export OLLAMA_MODEL="qwen2.5:7b-instruct-q4_K_M"
             python scripts/generate_digest.py --test
+            kill $OLLAMA_PID 2>/dev/null || true
           else
             python scripts/generate_digest.py
           fi

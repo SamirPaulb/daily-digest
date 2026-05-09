@@ -2606,6 +2606,38 @@ def test_all() -> None:
         except Exception as e:
             _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
 
+    # ── Test Ollama (local model) ─────────────────────────────────────────
+    _log("TEST", "\n─── Ollama (Local Model) ───")
+    ollama_model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+    try:
+        # Check if Ollama is running
+        req = urllib.request.Request("http://localhost:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            _log("PASS", f"  Ollama server: running")
+        # Test generation
+        body = json.dumps({
+            "model": ollama_model,
+            "prompt": test_prompt,
+            "stream": False,
+            "options": {"num_predict": 256},
+        }).encode()
+        req = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        text = data.get("response", "")
+        if text and len(text) > 10:
+            _log("PASS", f"  Ollama ({ollama_model}): {text[:100]}")
+        else:
+            _log("FAIL", f"  Ollama ({ollama_model}): empty response")
+    except urllib.error.URLError:
+        _log("SKIP", f"  Ollama: server not running (install with: curl -fsSL https://ollama.ai/install.sh | sh)")
+    except Exception as e:
+        _log("FAIL", f"  Ollama: {type(e).__name__}: {e}")
+
     # ── Summary ───────────────────────────────────────────────────────────
     _log("TEST", "\n" + "=" * 60)
     _log("TEST", "TEST COMPLETE — check PASS/FAIL above for each provider")
