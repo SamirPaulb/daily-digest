@@ -2320,15 +2320,6 @@ def main() -> None:
     if outcome:
         result, source = outcome
 
-    # ── Level 1.5: direct assembly — no LLM ────────────────────────────────
-    if not result:
-        _log("INFO", "─── Level 1.5: direct assembly (no LLM) ─────────────")
-        outcome = _run(_make_level1_5(
-            market, hn, mkt_commentary, glob_news, india_news, tech_news,
-        ))
-        if outcome:
-            result, source = outcome
-
     # ── Level 2: standard AI + pre-fetched rich context ────────────────────
     if not result:
         _log("INFO", "─── Level 2: standard AI + pre-fetched context ───────")
@@ -2336,7 +2327,16 @@ def main() -> None:
         if outcome:
             result, source = outcome
 
-    # ── Level 2.5: Local Ollama model ──────────────────────────────────────
+    # ── Level 2.5: direct assembly — no LLM (fallback when ALL AI fails) ──
+    if not result:
+        _log("INFO", "─── Level 2.5: direct assembly (no LLM) ─────────────")
+        outcome = _run(_make_level1_5(
+            market, hn, mkt_commentary, glob_news, india_news, tech_news,
+        ))
+        if outcome:
+            result, source = outcome
+
+    # ── Level 3: Local Ollama model ───────────────────────────────────────
     # Only active when OLLAMA_MODEL env var is set (by the workflow after it
     # detects all cloud APIs failed and installs Ollama as a fallback).
     # Receives the same rich pre-fetched context — biggest benefit here since
@@ -2536,7 +2536,8 @@ def main() -> None:
 {_r("Gold")}
 {_r("Silver")}
 {_r("Brent Crude")}
-{_r("Bitcoin")}"""
+{_r("Bitcoin")}
+"""
 
     # Replace AI-generated Markets section with real data
     if market:
