@@ -277,10 +277,11 @@ _FURTHER_READING_FEEDS: list[str] = [
     "https://fortune.com/feed/",                                  # Fortune
     "https://www.ft.com/?format=rss",                             # Financial Times
     "https://www.forbes.com/innovation/feed",                     # Forbes Innovation
-    "https://www.reddit.com/r/selfimprovement.rss",               # Reddit Self-Improvement
+    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",  # CNBC Top News
+    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001054",   # CNBC Finance
     "https://techcrunch.com/feed/",                               # TechCrunch
     "https://feeds.bloomberg.com/markets/news.rss",               # Bloomberg Markets
-    "https://hbr.org/feed",                                       # Harvard Business Review
+    "https://chaski.huffpost.com/us/auto/vertical/world-news",    # HuffPost World
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -296,12 +297,15 @@ STRUCTURE RULES:
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
 4. Each section: 7-10 bullet points, format: - **Bold headline** — brief detail.
-5. Be smart about what's newsworthy TODAY — skip sections with nothing interesting
-6. Do NOT include a ## Further Reading section (it is appended automatically by the script)
+5. ## Global News and ## India are MANDATORY. ALL sections MUST have 7-10 items each — never fewer than 7.
+6. Be smart about what's newsworthy TODAY — skip optional sections with nothing interesting
+7. Do NOT include a ## Further Reading section (it is appended automatically by the script)
 
-PICK 5-7 of these based on what's most interesting/relevant today:
+MANDATORY (always include, 5-10 items each):
 - ## Global News — geopolitics, world events, breaking news
 - ## India — Indian politics, economy, business, sports
+
+PICK 3-5 MORE of these based on what's most interesting/relevant today:
 - ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
 - ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
 - ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
