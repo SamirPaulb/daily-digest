@@ -2569,8 +2569,10 @@ def test_all() -> None:
     # ── Test AI providers ─────────────────────────────────────────────────
     _log("TEST", "\n─── AI Providers (Level 1 — search-capable) ───")
     test_prompt = (
-        "Respond with exactly: TEST_OK followed by today's date. "
-        "Nothing else. No explanation."
+        "You are a helpful assistant. Today's date is May 9, 2026. "
+        "Write a short 3-sentence summary of what a daily news digest is. "
+        "Start your response with the exact text 'TEST_OK' on the first line, "
+        "then write the summary below it."
     )
 
     # Level 1 providers
