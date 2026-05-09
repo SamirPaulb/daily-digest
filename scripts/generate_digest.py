@@ -238,7 +238,10 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://feeds.bloomberg.com/markets/news.rss",           # Bloomberg Markets
         "https://feeds.bloomberg.com/politics/news.rss",          # Bloomberg Politics
         "https://www.cnbc.com/id/100003114/device/rss/rss.html", # CNBC Top News
-        "https://www.thehindu.com/feeder/default.rss",            # The Hindu (international perspective)
+        "https://www.aljazeera.com/xml/rss/all.xml",               # Al Jazeera (global perspective)
+        "https://feeds.washingtonpost.com/rss/world",              # Washington Post World
+        "https://moxie.foxnews.com/google-publisher/world.xml",    # Fox News World
+        "https://news.yahoo.com/rss/mostviewed",                   # Yahoo News Most Viewed
         "https://www.ft.com/rss/home/international",              # Financial Times International
     ],
     "india": [
@@ -246,7 +249,14 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://www.thehindu.com/feeder/default.rss",                 # The Hindu (main feed)
         "https://www.thehindu.com/feedly/s1/india/feedly.rss",        # The Hindu India section
         "https://economictimes.indiatimes.com/rssfeed/1977021501.cms", # Economic Times
-        "https://feeds.feedburner.com/NdtvProfit-LatestNews",          # NDTV Profit
+        "https://feeds.feedburner.com/ndtvnews-top-stories",           # NDTV Top Stories
+        "https://feeds.feedburner.com/ndtvnews-india-news",            # NDTV India News
+        "https://feeds.feedburner.com/ndtvnews-trending-news",         # NDTV Trending
+        "https://feeds.feedburner.com/ndtvprofit-latest",              # NDTV Profit
+        "https://feeds.feedburner.com/ndtvnews-indians-abroad",        # NDTV Indians Abroad
+        "https://www.business-standard.com/rss/latest.rss",            # Business Standard Latest
+        "https://www.business-standard.com/rss/markets-106.rss",       # Business Standard Markets
+        "https://www.business-standard.com/rss/home_page_top_stories.rss", # Business Standard Top
         "https://www.livemint.com/rss/news",                           # Livemint
         "https://www.moneycontrol.com/rss/lateststories.xml",          # MoneyControl
     ],
@@ -284,7 +294,7 @@ STRUCTURE RULES:
 1. Start with YAML front matter (title, date, summary)
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
-4. Each section: 5-7 bullet points, format: - **Bold headline** — brief detail.
+4. Each section: 7-10 bullet points, format: - **Bold headline** — brief detail.
 5. Be smart about what's newsworthy TODAY — skip sections with nothing interesting
 6. Do NOT include a ## Further Reading section (it is appended automatically by the script)
 
@@ -1692,6 +1702,7 @@ def _make_level1(prompt: str) -> list:
         return _openai_compatible_call(
             "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
             "DEEPSEEK_MODEL", prompt, timeout=180.0,
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def _xai() -> str:
@@ -1853,6 +1864,7 @@ def _make_level2(prompt: str) -> list:
         return _openai_compatible_call(
             "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
             "DEEPSEEK_MODEL", prompt,
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def _mistral_data() -> str:
@@ -1883,6 +1895,7 @@ def _make_level2(prompt: str) -> list:
         return _openai_compatible_call(
             "MOONSHOT_AI_API_KEY", "MOONSHOT_BASE_URL",
             "MOONSHOT_MODEL", prompt,
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
     def _minimax_data() -> str:
@@ -1892,26 +1905,12 @@ def _make_level2(prompt: str) -> list:
         )
 
     def _zai_data() -> str:
-        """Z.AI (GLM) — supports web_search tool via tools parameter."""
-        api_key = os.environ.get("ZAI_API_KEY", "")
-        if not api_key:
-            return ""
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=180.0)
-            resp = client.chat.completions.create(
-                model=CFG["ZAI_MODEL"],
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-                tools=[{"type": "web_search", "web_search": {"enable": True}}],
-            )
-            return resp.choices[0].message.content or ""
-        except Exception:
-            # Retry without web_search if tool not supported
-            return _openai_compatible_call(
-                "ZAI_API_KEY", "ZAI_BASE_URL",
-                "ZAI_MODEL", prompt,
-            )
+        """Z.AI (GLM) — standard chat completions (no web_search in Level 2)."""
+        return _openai_compatible_call(
+            "ZAI_API_KEY", "ZAI_BASE_URL",
+            "ZAI_MODEL", prompt,
+        )
+
 
     # Ranked by output quality (best first):
     # Tier 1: Best reasoning/instruction-following
