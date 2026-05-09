@@ -1,0 +1,5 @@
+feedparser
+anthropic
+openai
+google-genai
+markdown

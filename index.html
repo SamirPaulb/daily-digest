@@ -1,1 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Digest | Samir Paul</title>
+  <meta name="description" content="Daily summary of markets, global news, India, tech and jobs.">
+  <link rel="icon" href="https://samirpaulb.github.io/favicon.ico">
+  <style>
+    :root {
+      --bg: #fff;
+      --bg-secondary: #f8f9fa;
+      --text: #1a1a2e;
+      --text-muted: #6c757d;
+      --link: #0066cc;
+      --border: #e9ecef;
+      --radius: 8px;
+      --positive: #16a34a;
+      --negative: #dc2626;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a2e;
+      --bg-secondary: #16213e;
+      --text: #e4e4e7;
+      --text-muted: #9ca3af;
+      --link: #60a5fa;
+      --border: #374151;
+      --positive: #4ade80;
+      --negative: #f87171;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
 
+    /* Header */
+    .site-header {
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .site-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .site-title:hover { color: var(--link); }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: var(--text);
+      transition: border-color 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--link); }
+    .back-link {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--link); }
+
+    /* Main layout */
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .page-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .page-header h1 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 0.3rem;
+    }
+    .page-header p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Date navigation */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .date-nav button {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--text);
+      transition: all 0.15s;
+    }
+    .date-nav button:hover { border-color: var(--link); color: var(--link); }
+    .date-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .date-nav .current-date {
+      font-weight: 600;
+      font-size: 1rem;
+      min-width: 180px;
+      text-align: center;
+    }
+
+    /* Digest content */
+    .digest-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 2rem;
+      box-shadow: var(--shadow);
+    }
+    .digest-content h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin: 1.5rem 0 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid var(--border);
+    }
+    .digest-content h2:first-child { margin-top: 0; }
+    .digest-content h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 1rem 0 0.5rem;
+      color: var(--text-muted);
+    }
+
+    /* Market tables */
+    .digest-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5rem 0 1rem;
+      font-size: 0.88rem;
+    }
+    .digest-content th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 2px solid var(--border);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+    }
+    .digest-content td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .digest-content tr:last-child td { border-bottom: none; }
+    .digest-content tr:hover td { background: var(--bg); }
+    .change-positive { color: var(--positive); font-weight: 600; }
+    .change-negative { color: var(--negative); font-weight: 600; }
+
+    /* News lists */
+    .digest-content ul {
+      list-style: none;
+      padding: 0;
+    }
+    .digest-content li {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .digest-content li:last-child { border-bottom: none; }
+    .digest-content li strong { color: var(--text); }
+
+    /* Market commentary */
+    .digest-content .market-comment {
+      font-style: italic;
+      color: var(--text-muted);
+      margin: 0.5rem 0 1rem;
+      font-size: 0.88rem;
+    }
+
+    /* Loading / error states */
+    .loading, .error-state, .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--link);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-state { color: var(--negative); }
+
+    /* Archive sidebar */
+    .archive-toggle {
+      display: block;
+      margin: 1.5rem auto 0;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem 1.2rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .archive-toggle:hover { border-color: var(--link); color: var(--link); }
+    .archive-list {
+      display: none;
+      margin-top: 1rem;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem;
+    }
+    .archive-list.open { display: block; }
+    .archive-item {
+      display: block;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.85rem;
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .archive-item:hover { background: var(--bg); color: var(--link); }
+    .archive-item.active { background: var(--link); color: #fff; }
+    .archive-item .archive-summary {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .archive-item.active .archive-summary { color: rgba(255,255,255,0.8); }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 3rem;
+    }
+    .site-footer a { color: var(--link); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem 1rem; }
+      .digest-content { padding: 1rem 1.25rem; }
+      .page-header h1 { font-size: 1.4rem; }
+      .digest-content table { font-size: 0.82rem; }
+      .digest-content th, .digest-content td { padding: 0.35rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="https://samirpaulb.github.io" class="site-title">~samir</a>
+    <div class="header-actions">
+      <a href="https://samirpaulb.github.io" class="back-link">Back to Blog</a>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+        <span id="themeIcon">&#9790;</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-header">
+      <h1>Daily Digest</h1>
+      <p>Markets, global news, India &amp; tech &mdash; every day</p>
+    </div>
+
+    <nav class="date-nav">
+      <button id="prevBtn" title="Previous day">&larr; Prev</button>
+      <span class="current-date" id="currentDate">Loading...</span>
+      <button id="nextBtn" title="Next day">Next &rarr;</button>
+    </nav>
+
+    <div class="digest-content" id="digestContent">
+      <div class="loading">Loading digest</div>
+    </div>
+
+    <button class="archive-toggle" id="archiveToggle">View Archive</button>
+    <div class="archive-list" id="archiveList"></div>
+  </main>
+
+  <footer class="site-footer">
+    <a href="https://samirpaulb.github.io">samirpaulb.github.io</a> &middot;
+    <a href="https://samirpaulb.github.io/contact/">Contact</a> &middot;
+    <a href="https://samirpaulb.github.io/privacy/">Privacy</a>
+  </footer>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // Base URL for digest files (same origin when deployed via GitHub Pages)
+    const BASE = 'https://raw.githubusercontent.com/SamirPaulb/daily-digest/main/digests';
+    let manifest = [];
+    let currentIndex = -1;
+
+    // ── Theme ────────────────────────────────────────────────────────────────
+    function getTheme() {
+      return localStorage.getItem('theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('theme', t);
+      document.getElementById('themeIcon').textContent = t === 'dark' ? '\u2600' : '\u263E';
+    }
+    applyTheme(getTheme());
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    });
+
+    // ── Manifest & Navigation ────────────────────────────────────────────────
+    async function loadManifest() {
+      try {
+        const resp = await fetch('https://raw.githubusercontent.com/SamirPaulb/daily-digest/main/manifest.json', { cache: 'no-cache' });
+        if (!resp.ok) throw new Error('Manifest not found');
+        manifest = await resp.json();
+        // Sort descending by date
+        manifest.sort(function(a, b) { return b.date.localeCompare(a.date); });
+      } catch (e) {
+        manifest = [];
+      }
+    }
+
+    function updateNav() {
+      var dateEl = document.getElementById('currentDate');
+      var prevBtn = document.getElementById('prevBtn');
+      var nextBtn = document.getElementById('nextBtn');
+
+      if (manifest.length === 0 || currentIndex < 0) {
+        dateEl.textContent = 'No digests available';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+      }
+      var entry = manifest[currentIndex];
+      // Format date nicely
+      var d = new Date(entry.date + 'T07:00:00+05:30');
+      dateEl.textContent = d.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+      });
+      // Prev = older (higher index), Next = newer (lower index)
+      prevBtn.disabled = (currentIndex >= manifest.length - 1);
+      nextBtn.disabled = (currentIndex <= 0);
+    }
+
+    async function loadDigest(index) {
+      if (index < 0 || index >= manifest.length) return;
+      currentIndex = index;
+      updateNav();
+      updateArchiveActive();
+
+      var container = document.getElementById('digestContent');
+      container.innerHTML = '<div class="loading">Loading digest</div>';
+
+      var entry = manifest[currentIndex];
+      try {
+        var resp = await fetch(BASE + '/' + entry.date + '.html', { cache: 'default' });
+        if (!resp.ok) throw new Error('Not found');
+        var html = await resp.text();
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = '<div class="error-state">Could not load digest for ' + entry.date + '</div>';
+      }
+    }
+
+    function buildArchive() {
+      var list = document.getElementById('archiveList');
+      list.innerHTML = '';
+      manifest.forEach(function(entry, idx) {
+        var item = document.createElement('a');
+        item.className = 'archive-item';
+        item.dataset.index = idx;
+        var d = new Date(entry.date + 'T07:00:00+05:30');
+        item.innerHTML = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+          (entry.summary ? '<span class="archive-summary">' + entry.summary + '</span>' : '');
+        item.addEventListener('click', function() { loadDigest(idx); });
+        list.appendChild(item);
+      });
+    }
+
+    function updateArchiveActive() {
+      document.querySelectorAll('.archive-item').forEach(function(el, idx) {
+        el.classList.toggle('active', idx === currentIndex);
+      });
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    async function init() {
+      await loadManifest();
+      if (manifest.length === 0) {
+        document.getElementById('digestContent').innerHTML =
+          '<div class="empty-state">No digests available yet. Check back tomorrow!</div>';
+        updateNav();
+        return;
+      }
+
+      // Check URL hash for specific date
+      var hash = window.location.hash.replace('#', '');
+      var startIndex = 0;
+      if (hash) {
+        var found = manifest.findIndex(function(e) { return e.date === hash; });
+        if (found >= 0) startIndex = found;
+      }
+
+      buildArchive();
+      loadDigest(startIndex);
+
+      document.getElementById('prevBtn').addEventListener('click', function() {
+        if (currentIndex < manifest.length - 1) loadDigest(currentIndex + 1);
+      });
+      document.getElementById('nextBtn').addEventListener('click', function() {
+        if (currentIndex > 0) loadDigest(currentIndex - 1);
+      });
+      document.getElementById('archiveToggle').addEventListener('click', function() {
+        document.getElementById('archiveList').classList.toggle('open');
+        this.textContent = document.getElementById('archiveList').classList.contains('open')
+          ? 'Hide Archive' : 'View Archive';
+      });
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>

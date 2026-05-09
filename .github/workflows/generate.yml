@@ -1,0 +1,83 @@
+name: Generate Daily Digest
+
+on:
+  schedule:
+    - cron: '0 2 * * *'    # 07:30 IST = 02:00 UTC
+  workflow_dispatch:        # manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: digest-pip-${{ hashFiles('scripts/requirements.txt') }}
+          restore-keys: digest-pip-
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Remove existing digest for manual re-run
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
+          FILE="digests/${DATE_ISO}.html"
+          if [ -f "$FILE" ]; then
+            rm "$FILE"
+            echo "Removed $FILE — will regenerate"
+          else
+            echo "No existing file for today — generating fresh"
+          fi
+
+      - name: Generate digest
+        timeout-minutes: 30
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TAVILY_API_KEY:     ${{ secrets.TAVILY_API_KEY }}
+          EXA_API_KEY:        ${{ secrets.EXA_API_KEY }}
+          NEWS_API_KEY:       ${{ secrets.NEWS_API_KEY }}
+          GNEWS_API_KEY:      ${{ secrets.GNEWS_API_KEY }}
+          CURRENTS_API_KEY:   ${{ secrets.CURRENTS_API_KEY }}
+          FINNHUB_API_KEY:    ${{ secrets.FINNHUB_API_KEY }}
+          CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
+          CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}
+          OPENAI_SEARCH_MODEL:      ${{ vars.OPENAI_SEARCH_MODEL }}
+          OPENAI_MODEL:             ${{ vars.OPENAI_MODEL }}
+          GEMINI_MODEL:             ${{ vars.GEMINI_MODEL }}
+          OPENROUTER_SEARCH_MODEL:  ${{ vars.OPENROUTER_SEARCH_MODEL }}
+          OPENROUTER_FREE_MODEL:    ${{ vars.OPENROUTER_FREE_MODEL }}
+          GITHUB_MODEL:             ${{ vars.GITHUB_MODEL }}
+          GITHUB_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/generate_digest.py
+
+      - name: Commit generated files
+        run: |
+          git config user.name "SamirPaulb"
+          git config user.email "77569653+SamirPaulb@users.noreply.github.com"
+          git add digests/ manifest.json
+          if git diff --staged --quiet; then
+            echo "No new digest generated — skipping commit"
+          else
+            git commit -m "Daily Digest — $(TZ='Asia/Kolkata' date '+%B %d, %Y')"
+            git pull --rebase origin main
+            git push
+          fi
