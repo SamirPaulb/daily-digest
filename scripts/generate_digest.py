@@ -194,73 +194,64 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://www.theverge.com/rss/index.xml",                 # The Verge (Atom)
         "https://www.wired.com/feed/rss",                         # Wired
         "https://www.technologyreview.com/feed/",                 # MIT Technology Review
+        "https://www.forbes.com/innovation/feed",                 # Forbes Innovation
     ],
 }
+
+# RSS feeds for "Further Reading" section — diverse, high-quality sources
+_FURTHER_READING_FEEDS: list[str] = [
+    "https://fortune.com/feed/",                                  # Fortune
+    "https://www.ft.com/?format=rss",                             # Financial Times
+    "https://www.forbes.com/innovation/feed",                     # Forbes Innovation
+    "https://www.reddit.com/r/selfimprovement.rss",               # Reddit Self-Improvement
+    "https://techcrunch.com/feed/",                               # TechCrunch
+    "https://feeds.bloomberg.com/markets/news.rss",               # Bloomberg Markets
+    "https://hbr.org/feed",                                       # Harvard Business Review
+]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Output format template (embedded here so no external file dependency)
 # ──────────────────────────────────────────────────────────────────────────────
 
 _EXPECTED_FORMAT = f"""\
-Output ONLY the following Hugo markdown — no preamble, no explanation, \
-no code fences:
+Output ONLY markdown — no preamble, no explanation, no code fences.
+DO NOT generate a ## Markets section — it is injected separately by the script.
+
+STRUCTURE RULES:
+1. Start with YAML front matter (title, date, summary)
+2. Include 5-7 sections (## heading + bullet points) — NO Markets section
+3. Sections separated by --- (horizontal rule)
+4. Each section: 2-4 bullet points, format: - **Bold headline** — brief detail.
+5. Be smart about what's newsworthy TODAY — skip sections with nothing interesting
+6. End with a ## Further Reading section (2-4 links)
+
+PICK 5-7 of these based on what's most interesting/relevant today:
+- ## Global News — geopolitics, world events, breaking news
+- ## India — Indian politics, economy, business, sports
+- ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
+- ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
+- ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
+- ## Career & Opportunities — hiring trends, hot skills, remote jobs, career moves
+- ## Personal Finance — savings tips, rate changes, tax, insurance, budgeting
+- ## Learning & Growth — one skill/course/book/resource worth exploring today
+- ## Insight of the Day — one powerful tweet, quote, or non-obvious observation
+
+FORMAT:
 
 ---
 title: "Daily Digest — {DATE_HUMAN}"
 date: {DATE_FRONT}
-summary: "One sentence covering the 3-4 top stories of today"
+summary: "One punchy sentence covering 2-3 top stories"
 ---
 
-## Markets
-
-**India**
-
-| Index | Price | Change |
-|-------|-------|--------|
-| Nifty 50 | ... | ...% |
-| Sensex | ... | ...% |
-| USD/INR | ... | ...% |
-
-**Global**
-
-| Index | Price | Change |
-|-------|-------|--------|
-| S&P 500 | ... | ...% |
-| NASDAQ | ... | ...% |
-| Dow Jones | ... | ...% |
-| Nikkei 225 | ... | ...% |
-| FTSE 100 | ... | ...% |
-| DAX | ... | ...% |
-
-**Commodities & Crypto**
-
-| Asset | Price | Change |
-|-------|-------|--------|
-| Gold | ... | ...% |
-| Silver | ... | ...% |
-| Brent Crude | ... | ...% |
-| Bitcoin | ... | ...% |
-
----
-
-## Global News
+## [Section Name]
 
 - **Headline** — brief detail.
 - **Headline** — brief detail.
 
 ---
 
-## India
-
-- **Headline** — brief detail.
-- **Headline** — brief detail.
-
----
-
-## Jobs & Tech
-
-- **Headline** — brief detail.
-- **Headline** — brief detail."""
+(repeat for 5-7 sections)"""
 
 def _prompt_with_rich_data(
     market: dict,
@@ -273,14 +264,11 @@ def _prompt_with_rich_data(
 ) -> str:
     """
     Build a prompt pre-loaded with all pre-fetched real-time data.
+    Market data is NOT passed to AI (handled separately by the script).
     search_hint=True  → for search-capable models (Claude, GPT-search, Gemini grounding,
                          Perplexity) — they can supplement the data with their own search.
     search_hint=False → for standard models and Ollama — data is self-contained.
     """
-    mkt_lines = "\n".join(
-        f"  {k}: {v['price']} ({v['change']})" for k, v in market.items()
-    ) or "  [fetch failed]"
-
     hn_lines = "\n".join(f"  - {h}" for h in hn[:8]) or "  [fetch failed]"
 
     def _sec(items: list, label: str) -> str:
@@ -292,36 +280,45 @@ def _prompt_with_rich_data(
     # Blend tech search results with HN headlines for the tech section
     tech_combined = tech_news[:3] + [f"**{h}**" for h in hn[:3]]
 
-    mkt_note = (
-        f"\n\nMARKET COMMENTARY (Tavily finance search):\n  {mkt_commentary[:400]}"
-        if mkt_commentary else ""
-    )
     supplement = (
-        "\n\nYou also have live web search — use it to add depth, verify details, "
-        "or fill any section where pre-fetched data is sparse."
-        if search_hint else ""
+        "\n\nYou have live web search — use it to fill sections like Startups & Funding, "
+        "Investing & Predictions, Career & Opportunities, and Personal Finance with REAL, "
+        "verifiable today's news. Only include items you can confirm via search. "
+        "For Global News, India, and AI & Tech — prefer the pre-fetched data below."
+        if search_hint else
+        "\n\nFor sections without pre-fetched data: SKIP them rather than guessing. "
+        "Only output sections you have real data for."
     )
 
     return f"""\
-You are a daily digest writer for an Indian finance and tech blog.
+You are a smart personal daily briefing writer. Your reader is a software engineer \
+based in India who actively invests globally (Indian mutual funds, US stocks, UCITS, \
+global equities), follows AI/startups/tech, and wants to stay informed about career \
+opportunities, market moves, and emerging sectors without missing anything important.
 Today is {DATE_HUMAN}.
 
-Real-time data has already been fetched for you — use it as your primary source.
-Synthesize it into a polished digest with concise, insightful commentary.{supplement}
+NOTE: The Markets section (prices, indices) is handled separately by the script — \
+do NOT generate any market data or prices. Focus ONLY on news and insights.{supplement}
 
-MARKET DATA (Yahoo Finance — live prices):
-{mkt_lines}{mkt_note}
+ACCURACY RULES (CRITICAL):
+1. News sections (Global, India, AI & Tech): use ONLY headlines from the PRE-FETCHED data below. \
+You may rephrase for brevity but NEVER invent a headline or event that isn't in the data.
+2. For sections without pre-fetched data (Startups, Investing, Career, Personal Finance, Learning): \
+ONLY include if you have web search results confirming it. If unsure, skip the section entirely. \
+Never hallucinate company names, funding amounts, analyst names, or predictions.
+3. If a section would have fewer than 2 real items, skip it — do not pad with invented content.
+4. Always prefer fewer accurate items over more questionable ones.
 
-PRE-FETCHED GLOBAL NEWS (Tavily / Exa / DDG):
+GLOBAL NEWS (verified headlines):
 {_sec(glob_news, 'global')}
 
-PRE-FETCHED INDIA NEWS (Tavily / Exa / DDG):
+INDIA NEWS (verified headlines):
 {_sec(india_news, 'India')}
 
-PRE-FETCHED JOBS & TECH NEWS (Tavily / Exa / DDG + HN):
-{_sec(tech_combined, 'tech/jobs')}
+TECH / AI / STARTUPS / JOBS (verified headlines):
+{_sec(tech_combined, 'tech/AI/startups/jobs')}
 
-HACKER NEWS TOP STORIES (raw titles for reference):
+HACKER NEWS (developer community — real titles):
 {hn_lines}
 
 {_EXPECTED_FORMAT}"""
@@ -330,7 +327,7 @@ HACKER NEWS TOP STORIES (raw titles for reference):
 # Output normalisation and validation
 # ──────────────────────────────────────────────────────────────────────────────
 
-_REQUIRED = ["## Markets", "## Global News", "## India", "## Jobs & Tech"]
+_REQUIRED = ["## "]  # At least one section heading required from AI
 
 
 def _normalize(text: str) -> str:
@@ -1457,7 +1454,7 @@ summary: "{summary}"
 
 ---
 
-## Jobs & Tech
+## AI & Tech
 
 {tech_sec}"""
 
@@ -1753,7 +1750,7 @@ summary: "{summary}"
 
 ---
 
-## Jobs & Tech
+## AI & Tech
 
 {tech_bullets}"""
 
@@ -1800,8 +1797,6 @@ summary: "[DRAFT — fill in summary before publishing]"
 | Brent Crude | [price] | [change]% |
 | Bitcoin | [price] | [change]% |
 
-[Market commentary]
-
 ---
 
 ## Global News
@@ -1818,7 +1813,7 @@ summary: "[DRAFT — fill in summary before publishing]"
 
 ---
 
-## Jobs & Tech
+## AI & Tech
 
 - **[Headline]** — [detail].
 - **[Headline]** — [detail]."""
@@ -2048,6 +2043,99 @@ def main() -> None:
         result = _template_only()
         source = "blank-template"
         _log("OK", "blank template created — edit before publishing")
+
+    # ── Replace Markets section with REAL data (never trust AI for numbers) ──
+    def _build_real_markets(mkt: dict) -> str:
+        """Build the Markets markdown section from actual fetched data."""
+        def _r(key: str) -> str:
+            v = mkt.get(key, {"price": "[N/A]", "change": "[N/A]"})
+            return f"| {key} | {v['price']} | {v['change']} |"
+
+        return f"""## Markets
+
+**India**
+
+| Index | Price | Change |
+|-------|-------|--------|
+{_r("Nifty 50")}
+{_r("Sensex")}
+{_r("USD/INR")}
+
+**Global**
+
+| Index | Price | Change |
+|-------|-------|--------|
+{_r("S&P 500")}
+{_r("NASDAQ")}
+{_r("Dow Jones")}
+{_r("Nikkei 225")}
+{_r("FTSE 100")}
+{_r("DAX")}
+
+**Commodities & Crypto**
+
+| Asset | Price | Change |
+|-------|-------|--------|
+{_r("Gold")}
+{_r("Silver")}
+{_r("Brent Crude")}
+{_r("Bitcoin")}"""
+
+    # Replace AI-generated Markets section with real data
+    if market:
+        real_markets = _build_real_markets(market)
+        # Find and replace: everything from "## Markets" to the next "---" or "## "
+        markets_pattern = re.compile(
+            r"## Markets.*?(?=\n---|\n## (?!Markets))",
+            re.DOTALL,
+        )
+        if markets_pattern.search(result):
+            result = markets_pattern.sub(real_markets, result, count=1)
+            _log("INFO", "  Replaced AI Markets section with real data")
+        else:
+            # Markets section missing — prepend it after front matter
+            if "\n---\n" in result:
+                # Insert after the closing --- of front matter
+                fm_end = result.index("\n---\n", result.index("---") + 3) + 5
+                result = result[:fm_end] + "\n" + real_markets + "\n\n---\n" + result[fm_end:]
+                _log("INFO", "  Injected real Markets section (was missing)")
+
+    # ── Append "Further Reading" links from RSS feeds ───────────────────
+    def _fetch_further_reading(n: int = 5) -> str:
+        """Fetch top headlines from diverse RSS feeds for Further Reading section."""
+        import random
+        links: list[tuple[str, str]] = []  # (title, url)
+        random.shuffle(_FURTHER_READING_FEEDS)  # Randomize to get variety each day
+        for feed_url in _FURTHER_READING_FEEDS:
+            if len(links) >= n:
+                break
+            try:
+                req = urllib.request.Request(
+                    feed_url,
+                    headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"},
+                )
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    raw = resp.read()
+                feed = feedparser.parse(raw)
+                for entry in (feed.entries or [])[:2]:
+                    title = (entry.get("title") or "").strip()
+                    link = (entry.get("link") or "").strip()
+                    if title and link and len(links) < n:
+                        # Skip duplicates
+                        if not any(t == title for t, _ in links):
+                            links.append((title, link))
+            except Exception:
+                continue
+        if not links:
+            return ""
+        md = "\n\n---\n\n## Further Reading\n\n"
+        md += "\n".join(f"- [{t}]({u})" for t, u in links[:n])
+        return md
+
+    further = _fetch_further_reading()
+    if further:
+        result = result.rstrip() + further
+        _log("INFO", f"  Appended Further Reading ({further.count('[')}) links)")
 
     # ── Convert markdown to HTML and write ────────────────────────────────
     author = _SOURCE_AUTHOR.get(source, "")
