@@ -32,7 +32,8 @@ CONFIGURATION — set as GitHub Variables (not Secrets):
   GEMINI_MODEL             default: gemini-2.0-flash
   OPENROUTER_SEARCH_MODEL  default: perplexity/llama-3.1-sonar-small-128k-online
   OPENROUTER_FREE_MODEL    default: google/gemini-2.0-flash-exp:free
-  GITHUB_MODEL             default: gpt-4o-mini  (models.inference.ai.azure.com)
+  GITHUB_MODEL             default: openai/gpt-4.1-mini  (models.github.ai)
+  GITHUB_MODEL_FALLBACKS   default: deepseek/DeepSeek-V3-0324,meta/Llama-4-Scout-17B-16E-Instruct,microsoft/Phi-4-reasoning
 
 API KEYS — set as GitHub Secrets:
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
@@ -45,8 +46,8 @@ API KEYS — set as GitHub Secrets:
   TWELVEDATA_API_KEY — twelvedata.com (backup quote source for indices/stocks/crypto/forex)
   (set any subset — only providers with keys are tried)
 
-NOTE: GITHUB_TOKEN is auto-injected in Actions and used by the Level 2
-  urllib fallback (GitHub Models). No extra secrets needed for that level.
+NOTE: GITHUB_TOKEN is auto-injected in Actions. For GitHub Models, set GH_MODELS_PAT
+  (PAT with models:read scope) for better rate limits, or fall back to GITHUB_TOKEN.
 """
 
 from __future__ import annotations
@@ -123,7 +124,8 @@ CFG = {
     "MOONSHOT_MODEL":          _env("MOONSHOT_MODEL",           "kimi-k2.6"),
     "MINIMAX_MODEL":           _env("MINIMAX_MODEL",            "MiniMax-M2.5"),
     "ZAI_MODEL":               _env("ZAI_MODEL",               "glm-4.5"),
-    "GITHUB_MODEL":            _env("GITHUB_MODEL",            "gpt-4o-mini"),
+    "GITHUB_MODEL":            _env("GITHUB_MODEL",            "openai/gpt-4.1-mini"),
+    "GITHUB_MODEL_FALLBACKS":  _env("GITHUB_MODEL_FALLBACKS",  "deepseek/DeepSeek-V3-0324,meta/Llama-4-Scout-17B-16E-Instruct,microsoft/Phi-4-reasoning"),
 
     # ── AI Provider Base URLs ─────────────────────────────────────────────
     "OPENAI_BASE_URL":         _env("OPENAI_BASE_URL",         "https://api.openai.com/v1"),
@@ -414,10 +416,12 @@ _REQUIRED = ["## Global News", "## India"]  # These sections are mandatory in AI
 
 
 def _normalize(text: str) -> str:
-    """Strip code fences, leading preamble, and surrounding whitespace."""
+    """Strip code fences, leading preamble, thinking tokens, and surrounding whitespace."""
     if not isinstance(text, str):
         return ""
     text = text.strip()
+    # Strip <think>...</think> reasoning tokens (Phi-4-reasoning, DeepSeek)
+    text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
     # Strip markdown code fence wrapper (```markdown ... ```)
     if text.startswith("```"):
         lines = text.splitlines()
@@ -1896,37 +1900,43 @@ def _make_level1_5(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# GitHub Models helper — stdlib urllib, no packages, GITHUB_TOKEN always set
+# GitHub Models helper — stdlib urllib, no packages
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _github_models_call(prompt: str) -> str:
     """
     Call GitHub Models via the OpenAI-compatible endpoint.
-    Uses GITHUB_TOKEN (auto-injected in Actions, needs models: read permission).
+    Uses GH_MODELS_PAT (dedicated PAT with models:read) or GITHUB_TOKEN as fallback.
+    Tries GITHUB_MODEL first, then GITHUB_MODEL_FALLBACKS on failure.
     Pure stdlib — no extra packages required.
     """
-    token = os.environ.get("GITHUB_TOKEN", "")
+    token = os.environ.get("GH_MODELS_PAT", "") or os.environ.get("GITHUB_TOKEN", "")
     if not token:
         return ""
-    # The REST API uses the bare model ID (e.g. "gpt-4o-mini"), not the
-    # publisher-prefixed catalog ID ("openai/gpt-4o-mini") used by actions/ai-inference.
-    model_id = CFG["GITHUB_MODEL"].split("/")[-1]
-    body = json.dumps({
-        "model": model_id,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 2048,
-    }).encode()
-    req = urllib.request.Request(
-        f"{CFG['GITHUB_MODELS_BASE_URL']}/chat/completions",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read())
-    return data["choices"][0]["message"]["content"] or ""
+    models = [CFG["GITHUB_MODEL"]] + [m.strip() for m in CFG["GITHUB_MODEL_FALLBACKS"].split(",") if m.strip()]
+    for model_id in models:
+        try:
+            body = json.dumps({
+                "model": model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2048,
+            }).encode()
+            req = urllib.request.Request(
+                f"{CFG['GITHUB_MODELS_BASE_URL']}/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+            content = data["choices"][0]["message"]["content"] or ""
+            if content:
+                return content
+        except Exception as exc:
+            _log("WARN", f"  GitHub Models ({model_id}) failed: {exc}")
+    return ""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2047,8 +2057,8 @@ def _make_level2(prompt: str) -> list:
         ("fireworks+data",  "FIREWORKS_API_KEY",   _fireworks_data),
         ("moonshot+data",   "MOONSHOT_AI_API_KEY", _moonshot_data),
         ("minimax+data",    "MINIMAX_API_KEY",     _minimax_data),
-        # Always available in GitHub Actions — final cloud fallback
-        ("github-models",   "GITHUB_TOKEN",        _github_models_data),
+        # Always available in GitHub Actions — final cloud fallback (GH_MODELS_PAT or GITHUB_TOKEN)
+        ("github-models",   None,                  _github_models_data),
     ]
 
 # ──────────────────────────────────────────────────────────────────────────────

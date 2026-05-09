@@ -40,6 +40,17 @@ Main blog fetches HTML via raw.githubusercontent.com
 | 4 | Blank template | Always succeeds |
 | Workflow | GitHub AI Inference → Vercel AI Gateway → Ollama install | Action-level fallbacks |
 
+## GitHub Models (Free Tier)
+
+Uses `GH_MODELS_PAT` (PAT with `models:read` scope) for the GitHub Models endpoint at `models.github.ai`. Tries multiple models in order — if one fails or is unavailable, moves to the next:
+
+1. `openai/gpt-4.1-mini` (primary)
+2. `deepseek/DeepSeek-V3-0324` (fallback)
+3. `meta/Llama-4-Scout-17B-16E-Instruct` (fallback)
+4. `microsoft/Phi-4-reasoning` (fallback — free long-term, Microsoft-hosted)
+
+Configurable via `GITHUB_MODEL` and `GITHUB_MODEL_FALLBACKS` variables.
+
 ## Market Data Sources
 
 | Data | Primary | Fallback chain |
@@ -55,6 +66,7 @@ Main blog fetches HTML via raw.githubusercontent.com
 - `OPENROUTER_API_KEY` — AI (Perplexity search)
 
 ### Recommended
+- `GH_MODELS_PAT` — GitHub Models PAT (models:read scope, free tier with 4-model fallback)
 - `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `FIREWORKS_API_KEY` — AI redundancy
 - `TAVILY_API_KEY`, `NEWS_API_KEY`, `GNEWS_API_KEY` — news sources
 - `ALPHAVANTAGE_API_KEY` — market data + US movers backup
@@ -68,7 +80,7 @@ Main blog fetches HTML via raw.githubusercontent.com
 - `VERCEL_AI_GATEWAY_API_KEY` — workflow fallback
 
 ### Always available (no setup needed)
-- `GITHUB_TOKEN` — GitHub Models + AI Inference action
+- `GITHUB_TOKEN` — fallback for GitHub Models if `GH_MODELS_PAT` not set
 
 ## Variables (GitHub → Settings → Variables → Actions)
 
@@ -78,7 +90,7 @@ All optional. Override model names when a provider deprecates one — no code ch
 GEMINI_MODEL, OPENAI_MODEL, OPENAI_SEARCH_MODEL, DEEPSEEK_MODEL,
 GROQ_MODEL, MISTRAL_MODEL, XAI_MODEL, ZAI_MODEL, FIREWORKS_MODEL,
 MOONSHOT_MODEL, MINIMAX_MODEL, OPENROUTER_SEARCH_MODEL, OPENROUTER_FREE_MODEL,
-GITHUB_MODEL, TWELVEDATA_BASE_URL
+GITHUB_MODEL, GITHUB_MODEL_FALLBACKS, TWELVEDATA_BASE_URL
 ```
 
 ## Local Development
