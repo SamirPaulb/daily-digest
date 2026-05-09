@@ -9,7 +9,9 @@ Automated daily briefing — markets, news, AI, startups, investing, careers. Ge
 ```
 4:30 AM IST daily (or manual trigger)
     ↓
-Fetch market data (Finnhub → Alpha Vantage → Yahoo Finance)
+Fetch market data (Finnhub → Alpha Vantage → Yahoo Finance → Massive)
+    ↓
+Fetch top gainers/losers (NSE India + Alpha Vantage US)
     ↓
 Fetch news (Tavily → NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub → Exa → RSS)
     ↓
@@ -51,6 +53,7 @@ Main blog fetches HTML via raw.githubusercontent.com
 - `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `ZAI_API_KEY`
 - `MOONSHOT_AI_API_KEY`, `MINIMAX_API_KEY`
 - `NYTIMES_API_KEY`, `CURRENTS_API_KEY`, `MEDIASTACK_API_KEY`, `EXA_API_KEY`
+- `MASSIVE_API_KEY` — market data (crypto/forex only on free plan)
 - `VERCEL_AI_GATEWAY_API_KEY` — workflow fallback
 
 ### Always available (no setup needed)

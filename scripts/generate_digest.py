@@ -405,7 +405,7 @@ HACKER NEWS (developer community — real titles):
 # Output normalisation and validation
 # ──────────────────────────────────────────────────────────────────────────────
 
-_REQUIRED = ["## "]  # At least one section heading required from AI
+_REQUIRED = ["## Global News", "## India"]  # These sections are mandatory in AI output
 
 
 def _normalize(text: str) -> str:
@@ -421,6 +421,9 @@ def _normalize(text: str) -> str:
         if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]          # remove closing fence
         text = "\n".join(lines).strip()
+    # Remove any trailing ``` that leaked from AI output
+    text = re.sub(r"\n```\s*$", "", text)
+    text = re.sub(r"\n```\s*\n", "\n", text)
     # Strip any preamble before the front-matter opening ---
     idx = text.find("---")
     if idx > 0:
@@ -697,6 +700,52 @@ def _fetch_finnhub_quote(sym: str) -> Optional[dict]:
     return None
 
 
+# Massive API symbol mapping: Yahoo → Massive format
+# Only crypto (X:) and forex (C:) work on free plan. Indices/futures don't.
+_MASSIVE_SYM_MAP: dict[str, str] = {
+    "BTC-USD":   "X:BTCUSD",
+    "USDINR=X":  "C:USDINR",
+}
+
+
+def _fetch_massive_quote(sym: str) -> Optional[dict]:
+    """
+    Fetch a quote from Massive API (last resort fallback).
+    Free plan: stocks, crypto, forex only. No indices or futures.
+    Uses /v2/aggs/ticker/{ticker}/prev for previous day's bar.
+    Change % computed from open to close.
+
+    Ref: https://massive.com/docs/rest
+    """
+    api_key = os.environ.get("MASSIVE_API_KEY", "")
+    if not api_key:
+        return None
+    massive_sym = _MASSIVE_SYM_MAP.get(sym)
+    if not massive_sym:
+        return None
+    try:
+        url = (
+            f"https://api.massive.com/v2/aggs/ticker/"
+            f"{urllib.parse.quote(massive_sym)}/prev"
+            f"?apiKey={api_key}"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        results = data.get("results") or []
+        if not results:
+            return None
+        bar = results[0]
+        close = float(bar.get("c") or 0)
+        opn = float(bar.get("o") or close) or close
+        chg = ((close - opn) / opn * 100) if opn else 0.0
+        if close:
+            return {"price": f"{close:,.2f}", "change": f"{chg:+.2f}%"}
+    except Exception as exc:
+        _log("WARN", f"  Massive quote ({sym}) failed: {exc}")
+    return None
+
+
 def _fetch_alphavantage_quote(sym: str) -> Optional[dict]:
     """
     Fetch a quote from Alpha Vantage (secondary source).
@@ -710,6 +759,9 @@ def _fetch_alphavantage_quote(sym: str) -> Optional[dict]:
     """
     api_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
     if not api_key:
+        return None
+    # Alpha Vantage doesn't support futures symbols (=F) — returns garbage data
+    if "=F" in sym:
         return None
     try:
         # Forex pairs (e.g., USDINR=X → from=USD, to=INR)
@@ -832,7 +884,7 @@ def _fetch_market_data() -> dict:
     ]
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
-        # Priority: Finnhub → Alpha Vantage → Yahoo
+        # Priority: Finnhub → Alpha Vantage → Yahoo → Massive
         q = _fetch_finnhub_quote(sym)
         if q:
             _log("DATA", f"  {label} (Finnhub): {q['price']} ({q['change']})")
@@ -844,6 +896,10 @@ def _fetch_market_data() -> dict:
         q = _fetch_yahoo_quote(sym)
         if q:
             _log("DATA", f"  {label} (Yahoo): {q['price']} ({q['change']})")
+            return label, q
+        q = _fetch_massive_quote(sym)
+        if q:
+            _log("DATA", f"  {label} (Massive): {q['price']} ({q['change']})")
         else:
             _log("WARN", f"  {label} ({sym}): all sources failed")
         return label, q
@@ -2338,12 +2394,119 @@ def main() -> None:
         source = "blank-template"
         _log("OK", "blank template created — edit before publishing")
 
+    # ── Fetch top gainers/losers for markets ─────────────────────────────
+    def _fetch_us_movers() -> tuple[list, list]:
+        """Fetch US top gainers/losers from Alpha Vantage. Returns (gainers, losers)."""
+        api_key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
+        if not api_key:
+            return [], []
+        try:
+            url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={api_key}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.load(resp)
+            gainers, losers = [], []
+            # Filter: price > $10, volume > 2M — covers top ~250 US stocks
+            def _is_major(item: dict) -> bool:
+                price = float(item.get("price") or 0)
+                vol = int(item.get("volume") or 0)
+                ticker = item.get("ticker", "")
+                if price < 10 or vol < 2_000_000:
+                    return False
+                if any(ticker.endswith(s) for s in ("W", "+", "Z", "R", "U")):
+                    return False
+                return True
+
+            for item in (data.get("top_gainers") or []):
+                if not _is_major(item):
+                    continue
+                pct = item.get("change_percentage", "0%").replace("%", "")
+                gainers.append((item["ticker"], f"+{float(pct):.1f}%"))
+                if len(gainers) >= 5:
+                    break
+            for item in (data.get("top_losers") or []):
+                if not _is_major(item):
+                    continue
+                pct = item.get("change_percentage", "0%").replace("%", "")
+                losers.append((item["ticker"], f"{float(pct):.1f}%"))
+                if len(losers) >= 5:
+                    break
+            return gainers, losers
+        except Exception as exc:
+            _log("WARN", f"  US movers failed: {exc}")
+            return [], []
+
+    def _fetch_india_movers() -> tuple[list, list]:
+        """Fetch India Nifty 50 top gainers/losers from NSE. Returns (gainers, losers)."""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+            "Referer": "https://www.nseindia.com/",
+            "Accept": "application/json",
+        }
+        gainers, losers = [], []
+        for kind, target in [("gainers", gainers), ("losers", losers)]:
+            try:
+                url = f"https://www.nseindia.com/api/live-analysis-variations?index={kind}"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.load(resp)
+                # Nifty 50 + Nifty Next 50 = top 100 stocks by market cap
+                combined = []
+                for key in ("NIFTY", "NIFTYNEXT50"):
+                    combined.extend((data.get(key) or {}).get("data") or [])
+                # Deduplicate by symbol, take first occurrence
+                seen = set()
+                for item in combined:
+                    sym = item.get("symbol", "")
+                    if sym in seen or not sym:
+                        continue
+                    seen.add(sym)
+                    pct = float(item.get("perChange") or 0)
+                    sign = "+" if pct >= 0 else ""
+                    target.append((sym, f"{sign}{pct:.1f}%"))
+                    if len(target) >= 5:
+                        break
+            except Exception as exc:
+                _log("WARN", f"  India {kind} failed: {exc}")
+        return gainers, losers
+
+    # Fetch movers in parallel
+    us_gainers, us_losers, india_gainers, india_losers = [], [], [], []
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            us_fut = pool.submit(_fetch_us_movers)
+            in_fut = pool.submit(_fetch_india_movers)
+            us_gainers, us_losers = us_fut.result()
+            india_gainers, india_losers = in_fut.result()
+        if us_gainers:
+            _log("DATA", f"  US movers: {len(us_gainers)} gainers, {len(us_losers)} losers")
+        if india_gainers:
+            _log("DATA", f"  India movers: {len(india_gainers)} gainers, {len(india_losers)} losers")
+    except Exception:
+        pass
+
     # ── Replace Markets section with REAL data (never trust AI for numbers) ──
     def _build_real_markets(mkt: dict) -> str:
         """Build the Markets markdown section from actual fetched data."""
         def _r(key: str) -> str:
             v = mkt.get(key, {"price": "[N/A]", "change": "[N/A]"})
             return f"| {key} | {v['price']} | {v['change']} |"
+
+        def _movers_line(items: list) -> str:
+            """Format movers as: TICKER (+X.X%), TICKER (+Y.Y%), ..."""
+            return ", ".join(f"**{sym}** ({pct})" for sym, pct in items)
+
+        india_movers_md = ""
+        if india_gainers:
+            india_movers_md += f"\n\nGainers: {_movers_line(india_gainers)}"
+        if india_losers:
+            india_movers_md += f"\n\nLosers: {_movers_line(india_losers)}"
+
+        us_movers_md = ""
+        if us_gainers:
+            us_movers_md += f"\n\nGainers: {_movers_line(us_gainers)}"
+        if us_losers:
+            us_movers_md += f"\n\nLosers: {_movers_line(us_losers)}"
 
         return f"""## Markets
 
@@ -2353,7 +2516,7 @@ def main() -> None:
 |-------|-------|--------|
 {_r("Nifty 50")}
 {_r("Sensex")}
-{_r("USD/INR")}
+{_r("USD/INR")}{india_movers_md}
 
 **Global**
 
@@ -2364,7 +2527,7 @@ def main() -> None:
 {_r("Dow Jones")}
 {_r("Nikkei 225")}
 {_r("FTSE 100")}
-{_r("DAX")}
+{_r("DAX")}{us_movers_md}
 
 **Commodities & Crypto**
 
@@ -2479,6 +2642,18 @@ def main() -> None:
     html_body = re.sub(
         r"<td>([+-][\d.]+%)</td>",
         _colorize_change,
+        html_body,
+    )
+
+    # Colorize movers percentages: (+X.X%) green, (-X.X%) red
+    html_body = re.sub(
+        r"\((\+[\d.]+%)\)",
+        r'(<span class="change-positive">\1</span>)',
+        html_body,
+    )
+    html_body = re.sub(
+        r"\((-[\d.]+%)\)",
+        r'(<span class="change-negative">\1</span>)',
         html_body,
     )
 
