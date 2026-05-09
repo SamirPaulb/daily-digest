@@ -284,9 +284,9 @@ STRUCTURE RULES:
 1. Start with YAML front matter (title, date, summary)
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
-4. Each section: 2-4 bullet points, format: - **Bold headline** — brief detail.
+4. Each section: 5-7 bullet points, format: - **Bold headline** — brief detail.
 5. Be smart about what's newsworthy TODAY — skip sections with nothing interesting
-6. End with a ## Further Reading section (2-4 links)
+6. Do NOT include a ## Further Reading section (it is appended automatically by the script)
 
 PICK 5-7 of these based on what's most interesting/relevant today:
 - ## Global News — geopolitics, world events, breaking news
@@ -2390,6 +2390,9 @@ def main() -> None:
                 result = result[:fm_end] + "\n" + real_markets + "\n\n---\n" + result[fm_end:]
                 _log("INFO", "  Injected real Markets section (was missing)")
 
+    # ── Strip any AI-generated "Further Reading" (script appends its own) ──
+    result = re.sub(r"\n---\n+## Further Reading.*", "", result, flags=re.DOTALL)
+
     # ── Append "Further Reading" links from RSS feeds ───────────────────
     def _fetch_further_reading(n: int = 5) -> str:
         """Fetch top headlines from diverse RSS feeds for Further Reading section."""
@@ -2408,13 +2411,19 @@ def main() -> None:
                 with urllib.request.urlopen(req, timeout=8) as resp:
                     raw = resp.read()
                 feed = feedparser.parse(raw)
-                for entry in (feed.entries or [])[:2]:
+                _BLOCKED_DOMAINS = {"aitoolsrecap.com", "youtube.com", "youtu.be"}
+                for entry in (feed.entries or [])[:3]:
                     title = (entry.get("title") or "").strip()
                     link = (entry.get("link") or "").strip()
-                    if title and link and len(links) < n:
-                        # Skip duplicates
-                        if not any(t == title for t, _ in links):
-                            links.append((title, link))
+                    if not title or not link or len(links) >= n:
+                        continue
+                    # Skip blocked domains
+                    if any(d in link for d in _BLOCKED_DOMAINS):
+                        continue
+                    # Skip duplicates
+                    if any(t == title for t, _ in links):
+                        continue
+                    links.append((title, link))
             except Exception:
                 continue
         if not links:
@@ -2467,6 +2476,18 @@ def main() -> None:
         r"<td>([+-][\d.]+%)</td>",
         _colorize_change,
         html_body,
+    )
+
+    # Make all links in Further Reading section open in new tab
+    # Find the Further Reading section and add target="_blank" to its links
+    def _add_target_blank(match: re.Match) -> str:
+        section = match.group(0)
+        return section.replace("<a ", '<a target="_blank" rel="noopener" ')
+    html_body = re.sub(
+        r"<h2>Further Reading</h2>.*",
+        _add_target_blank,
+        html_body,
+        flags=re.DOTALL,
     )
 
     OUTPUT_FILE.write_text(html_body, encoding="utf-8")

@@ -21,7 +21,7 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -56,7 +56,7 @@ jobs:
           fi
 
       - name: Generate digest
-        timeout-minutes: 30
+        timeout-minutes: 60
         env:
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
@@ -197,6 +197,47 @@ jobs:
           "
             echo "✅ Merged AI fallback output into digest"
           fi
+
+      # ── Ollama local AI fallback (last resort before commit) ──────────────
+      # Runs only if ALL cloud AI failed AND workflow fallbacks failed.
+      # Uses Qwen 2.5 7B Q4 — best quality-to-size ratio for 2-vCPU runners.
+      - name: Check if Ollama fallback needed
+        if: inputs.test_mode != 'true'
+        id: ollama_check
+        run: |
+          DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
+          FILE="digests/${DATE_ISO}.html"
+          if [ -f "$FILE" ] && grep -q "Data available with AI-powered digest" "$FILE"; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "⚠️ All cloud AI failed — activating local Ollama fallback"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Ollama and regenerate with local model
+        if: steps.ollama_check.outputs.needed == 'true'
+        timeout-minutes: 45
+        env:
+          OLLAMA_MODEL: qwen2.5:7b-instruct-q4_K_M
+        run: |
+          # Install Ollama
+          curl -fsSL https://ollama.ai/install.sh | sh
+          # Start server
+          ollama serve &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
+            sleep 1
+          done
+          # Pull model (Q4_K_M quantized — ~4.4GB, fits in runner RAM)
+          ollama pull $OLLAMA_MODEL
+          # Delete placeholder and regenerate
+          DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
+          rm -f "digests/${DATE_ISO}.html"
+          # Set OLLAMA_MODEL env so the Python script uses it at Level 2.5
+          export OLLAMA_MODEL
+          python scripts/generate_digest.py
+          # Stop Ollama
+          pkill ollama || true
 
       - name: Commit generated files
         if: inputs.test_mode != 'true'
