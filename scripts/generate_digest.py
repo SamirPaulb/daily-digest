@@ -2448,7 +2448,7 @@ def main() -> None:
             try:
                 url = f"https://www.nseindia.com/api/live-analysis-variations?index={kind}"
                 req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with urllib.request.urlopen(req, timeout=20) as resp:
                     data = json.load(resp)
                 # Nifty 50 + Nifty Next 50 = top 100 stocks by market cap
                 combined = []
