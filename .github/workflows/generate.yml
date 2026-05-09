@@ -2,7 +2,7 @@ name: Generate Daily Digest
 
 on:
   schedule:
-    - cron: '0 2 * * *'    # 07:30 IST = 02:00 UTC
+    - cron: '0 23 * * *'    # 04:30 IST = 23:00 UTC (previous day)
   workflow_dispatch:        # manual trigger
 
 permissions:
