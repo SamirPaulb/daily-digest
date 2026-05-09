@@ -133,7 +133,7 @@ CFG = {
     "MOONSHOT_BASE_URL":       _env("MOONSHOT_BASE_URL",       "https://api.moonshot.ai/v1"),
     "MINIMAX_BASE_URL":        _env("MINIMAX_BASE_URL",        "https://api.minimax.io/v1"),
     "ZAI_BASE_URL":            _env("ZAI_BASE_URL",            "https://api.z.ai/api/paas/v4"),
-    "GITHUB_MODELS_BASE_URL":  _env("GITHUB_MODELS_BASE_URL",  "https://models.inference.ai.azure.com"),
+    "GITHUB_MODELS_BASE_URL":  _env("GITHUB_MODELS_BASE_URL",  "https://models.github.ai/inference"),
 }
 
 

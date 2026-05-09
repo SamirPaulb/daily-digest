@@ -117,7 +117,89 @@ jobs:
             python scripts/generate_digest.py
           fi
 
+      # ── Workflow-level AI fallbacks ────────────────────────────────────────
+      # If the Python script's AI providers all failed (data-only template),
+      # try GitHub AI Inference (free) then Vercel AI Gateway as last resorts.
+      - name: Check if workflow AI fallback needed
+        if: inputs.test_mode != 'true'
+        id: ai_fallback_check
+        run: |
+          DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
+          FILE="digests/${DATE_ISO}.html"
+          if [ -f "$FILE" ] && grep -q "Data available with AI-powered digest" "$FILE"; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "⚠️ AI sections missing — activating workflow AI fallbacks"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "✅ AI sections present — no fallback needed"
+          fi
+
+      # Fallback 1: GitHub AI Inference (FREE — uses GITHUB_TOKEN)
+      - name: Generate with GitHub AI Inference (free)
+        if: steps.ai_fallback_check.outputs.needed == 'true'
+        id: github_ai
+        continue-on-error: true
+        uses: actions/ai-inference@v1
+        with:
+          model: 'openai/gpt-4o'
+          max-completion-tokens: '2048'
+          system-prompt: 'You are a daily briefing writer for a tech-savvy Indian investor. Generate news sections in markdown. Format: ## Section Name followed by bullet points (- **Headline** — detail). Include: Global News, India, AI & Tech. Only real verifiable news. Separate sections with ---.'
+          prompt: 'Generate today''s news digest sections. Do NOT include Markets. Start with ## Global News.'
+
+      # Fallback 2: Vercel AI Gateway (if GitHub AI failed)
+      - name: Generate with Vercel AI Gateway
+        if: steps.ai_fallback_check.outputs.needed == 'true' && steps.github_ai.outcome != 'success'
+        id: vercel_ai
+        continue-on-error: true
+        uses: vercel/ai-action@v2
+        with:
+          model: 'deepseek/deepseek-v4-flash'
+          api-key: ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}
+          system: 'You are a daily briefing writer. Generate news sections in markdown. Format: ## Section Name followed by bullet points (- **Headline** — detail). Include: Global News, India, AI & Tech. Only real news. Separate sections with ---.'
+          prompt: 'Generate today''s news digest sections. Do NOT include Markets. Start with ## Global News.'
+
+      # Merge whichever AI output succeeded into the digest
+      - name: Merge AI fallback output into digest
+        if: steps.ai_fallback_check.outputs.needed == 'true' && (steps.github_ai.outcome == 'success' || steps.vercel_ai.outcome == 'success')
+        env:
+          AI_OUTPUT: ${{ steps.github_ai.outputs.response || steps.vercel_ai.outputs.text }}
+        run: |
+          DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
+          FILE="digests/${DATE_ISO}.html"
+          # Convert AI markdown to HTML
+          echo "$AI_OUTPUT" | python -c "
+          import sys, markdown as md, re
+          text = sys.stdin.read()
+          if not text.strip():
+              sys.exit(0)
+          html = md.markdown(text, extensions=['tables'])
+          html = re.sub(r'<td>(\+[\d.]+%)</td>', r'<td class=\"change-positive\">\1</td>', html)
+          html = re.sub(r'<td>(-[\d.]+%)</td>', r'<td class=\"change-negative\">\1</td>', html)
+          print(html)
+          " > /tmp/ai_sections.html
+          # Keep market tables, replace everything after with AI output
+          if [ -s /tmp/ai_sections.html ]; then
+            python -c "
+          import re, os
+          date_iso = os.popen(\"TZ='Asia/Kolkata' date '+%Y-%m-%d'\").read().strip()
+          filepath = f'digests/{date_iso}.html'
+          with open(filepath) as f:
+              content = f.read()
+          tables = list(re.finditer(r'</table>', content))
+          if tables:
+              market_html = content[:tables[-1].end()]
+          else:
+              market_html = content
+          with open('/tmp/ai_sections.html') as f:
+              news_html = f.read()
+          with open(filepath, 'w') as f:
+              f.write(market_html + '\n' + news_html)
+          "
+            echo "✅ Merged AI fallback output into digest"
+          fi
+
       - name: Commit generated files
+        if: inputs.test_mode != 'true'
         run: |
           git config user.name "SamirPaulb"
           git config user.email "77569653+SamirPaulb@users.noreply.github.com"
