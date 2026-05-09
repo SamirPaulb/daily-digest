@@ -2494,7 +2494,7 @@ def main() -> None:
 
         def _movers_line(items: list) -> str:
             """Format movers as: TICKER (+X.X%), TICKER (+Y.Y%), ..."""
-            return ", ".join(f"**{sym}** ({pct})" for sym, pct in items)
+            return ", ".join(f"{sym} ({pct})" for sym, pct in items)
 
         india_movers_md = ""
         if india_gainers:
