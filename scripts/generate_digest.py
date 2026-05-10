@@ -2648,6 +2648,7 @@ def main() -> None:
 """
 
     # Replace AI-generated Markets section with real data
+    original_result = result
     if market:
         real_markets = _build_real_markets(market)
         # Find and replace: everything from "## Markets" to the next "---" or "## "
@@ -2665,6 +2666,17 @@ def main() -> None:
                 fm_end = result.index("\n---\n", result.index("---") + 3) + 5
                 result = result[:fm_end] + "\n" + real_markets + "\n\n---\n" + result[fm_end:]
                 _log("INFO", "  Injected real Markets section (was missing)")
+
+        # Safety check: ensure required sections survived injection
+        missing = [r for r in _REQUIRED if r not in result]
+        if missing:
+            _log("WARN", f"  Post-injection lost sections: {missing} — using original with Markets prepended")
+            result = original_result
+            # Simpler approach: insert Markets heading right after front matter ends
+            if result.startswith("---"):
+                parts = result.split("---", 2)
+                if len(parts) >= 3:
+                    result = "---" + parts[1] + "---\n\n" + real_markets + "\n\n---\n" + parts[2]
 
     # ── Strip any AI-generated "Further Reading" (script appends its own) ──
     result = re.sub(r"\n---\n+## Further Reading.*", "", result, flags=re.DOTALL)
