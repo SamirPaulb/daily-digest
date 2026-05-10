@@ -44,6 +44,7 @@ API KEYS — set as GitHub Secrets:
   CURRENTS_API_KEY — currentsapi.services (tertiary per-section news fallback)
   FINNHUB_API_KEY  — finnhub.io (Finnhub market news + quote fallback for indices)
   TWELVEDATA_API_KEY — twelvedata.com (backup quote source for indices/stocks/crypto/forex)
+  WEBSEARCHAPIAI_API_KEY — websearchapi.ai (Google-powered search, 1000 free credits/month)
   (set any subset — only providers with keys are tried)
 
 NOTE: GITHUB_TOKEN is auto-injected in Actions. For GitHub Models, set GH_MODELS_PAT
@@ -109,7 +110,7 @@ CFG = {
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4.1"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/sonar"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "openai/gpt-oss-120b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
@@ -117,7 +118,7 @@ CFG = {
 
     # Level 2 (standard, ranked by quality — same models, no search):
     "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4.1-mini"),
-    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "google/gemini-2.0-flash:free"),
+    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "nvidia/nemotron-3-super:free"),
     "GROQ_MODEL":              _env("GROQ_MODEL",              "llama-3.3-70b-versatile"),
     "MISTRAL_MODEL":           _env("MISTRAL_MODEL",           "mistral-small-latest"),
     "FIREWORKS_MODEL":         _env("FIREWORKS_MODEL",          "accounts/fireworks/models/deepseek-v3p1"),
@@ -1112,53 +1113,32 @@ def _fetch_rss_section(section: str, n: int = 4) -> list:
 
 def _fetch_ddg_headlines(query: str, n: int = 4) -> list:
     """
-    Search via DuckDuckGo Lite (lite.duckduckgo.com/lite/).
-    Simple POST, returns plain HTML — no JS, no cookies needed on clean IPs.
-    Requires beautifulsoup4 (in requirements-digest.txt).
-    Falls back gracefully to [] on any error.
+    Search via DuckDuckGo using the ddgs package (news endpoint).
+    Returns structured results with title, body, url, source, and date.
+    No API key needed. Falls back gracefully to [] on any error.
     """
     try:
-        from bs4 import BeautifulSoup
+        from ddgs import DDGS
     except ImportError:
-        _log("WARN", "  DDG: beautifulsoup4 not installed")
+        _log("WARN", "  DDG: ddgs package not installed")
         return []
-    data = urllib.parse.urlencode({"q": query, "kl": "us-en"}).encode()
-    req = urllib.request.Request(
-        "https://lite.duckduckgo.com/lite/",
-        data=data,
-        headers={
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                          "Chrome/120.0.0.0 Safari/537.36",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read()
-        soup = BeautifulSoup(html, "html.parser")
-        items = []
-        for link in soup.find_all("a", class_="result-link"):
+        results = DDGS().news(keywords=query, region="wt-wt", safesearch="off",
+                              timelimit="d", max_results=n + 2)
+        items: list[str] = []
+        for r in (results or []):
             if len(items) >= n:
                 break
-            title = link.get_text(strip=True)
+            title = (r.get("title") or "").strip()
+            body = (r.get("body") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            snippet = ""
-            row = link.find_parent("tr")
-            if row:
-                next_row = row.find_next_sibling("tr")
-                if next_row:
-                    cells = next_row.find_all("td")
-                    cell = cells[1] if len(cells) >= 2 else (cells[0] if cells else None)
-                    if cell:
-                        text = cell.get_text(strip=True)
-                        if text and not text.startswith(("http", "www.")):
-                            snippet = text[:150]
-            items.append(f"**{title}** — {snippet}." if snippet else f"**{title}**")
-        _log("DATA", f"  DDG: {len(items)} results (after junk filter)")
+            brief = body.split(". ")[0][:150] if body else ""
+            items.append(f"**{title}** — {brief}." if brief else f"**{title}**")
+        _log("DATA", f"  DDG news: {len(items)} results")
         return items
     except Exception as exc:
-        _log("WARN", f"  DDG search failed: {exc}")
+        _log("WARN", f"  DDG news failed: {exc}")
         return []
 
 
@@ -1604,18 +1584,67 @@ def _fetch_nytimes(section: str = "global", n: int = 4) -> list:
         return []
 
 
+def _fetch_websearchapi(query: str, n: int = 4) -> list:
+    """
+    Search via WebSearchAPI.ai (Google-powered, 1000 free credits/month).
+    Ref: https://websearchapi.ai/docs
+    POST https://api.websearchapi.ai/ai-search
+    Response: {"organic": [{"title", "url", "description", "position"}]}
+    1 credit per basic search. ~33 searches/day on free plan.
+    """
+    api_key = os.environ.get("WEBSEARCHAPIAI_API_KEY", "")
+    if not api_key:
+        return []
+    try:
+        payload = json.dumps({
+            "query": query,
+            "maxResults": n + 2,
+            "includeContent": False,
+            "country": "us",
+            "language": "en",
+            "timeframe": "day",
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.websearchapi.ai/ai-search",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for r in (data.get("organic") or []):
+            if len(items) >= n:
+                break
+            title = (r.get("title") or "").strip()
+            desc = (r.get("description") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  WebSearchAPI: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  WebSearchAPI failed: {exc}")
+        return []
+
+
 def _fetch_free_search(query: str, n: int = 4, section: str = "global") -> list:
     """
     Per-section search fallback chain (no LLM).  Returns first non-empty result.
 
     Tier 1 — paid APIs (best freshness, structured data):
-      NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub News
+      NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub News → WebSearchAPI
     Tier 2 — Exa deep neural search (paid, requires EXA_API_KEY):
       Exa
     Tier 3 — free, no key (RSS feeds from reputable sources):
       RSS feeds
-    Tier 4 — free scraping (quality lower, junk-filtered):
-      DDG Lite → Mojeek
+    Tier 4 — free search (structured API):
+      DDG news → Mojeek
 
     `section` selects the right RSS feed list and API category params.
     """
@@ -1636,6 +1665,9 @@ def _fetch_free_search(query: str, n: int = 4, section: str = "global") -> list:
     if results:
         return results
     results = _fetch_finnhub_news(section, n)
+    if results:
+        return results
+    results = _fetch_websearchapi(query, n)
     if results:
         return results
     # Tier 2: Exa — requires EXA_API_KEY
@@ -2342,38 +2374,103 @@ def main() -> None:
     india_news     = (prefetch.get("india") or ("", []))[1]
     tech_news      = (prefetch.get("tech") or ("", []))[1]
 
-    # Per-section fallback: Exa → DDG → Mojeek (run in parallel if multiple needed)
-    sections_needing_fallback: dict[str, Callable] = {}
-    if not glob_news:
-        sections_needing_fallback["glob"]  = lambda: _fetch_free_search(
-            f"world news today {DATE_HUMAN}", section="global"
-        )
-    if not india_news:
-        sections_needing_fallback["india"] = lambda: _fetch_free_search(
-            f"India news today {DATE_HUMAN}", section="india"
-        )
-    if not tech_news:
-        sections_needing_fallback["tech"]  = lambda: _fetch_free_search(
-            f"AI technology news today {DATE_HUMAN}", section="tech"
-        )
+    # ── Supplement: run ALL additional sources in parallel to enrich the data pool ──
+    # Even if Tavily returned results, other sources may have different/better stories.
+    # ALL fetchers run concurrently with generous timeouts. We WAIT for all to complete
+    # (or timeout) before passing data to AI — ensures maximum data richness.
+    # Public repo on GitHub Actions: no cost concern for runtime.
+    _SUPPLEMENT_TIMEOUT = 60  # seconds — wait for ALL sources to finish
 
-    if sections_needing_fallback:
-        _log("INFO", f"  Tavily empty for: {list(sections_needing_fallback)} — running fallback")
-        with ThreadPoolExecutor(max_workers=len(sections_needing_fallback)) as executor:
-            future_to_key = {executor.submit(fn): key
-                             for key, fn in sections_needing_fallback.items()}
-            for future in as_completed(future_to_key):
-                key = future_to_key[future]
+    def _supplement_global() -> list:
+        """Fetch global news from all available free sources."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS",          lambda: _fetch_rss_section("global", 6)),
+            ("NewsAPI",      lambda: _fetch_newsapi("global", 6)),
+            ("GNews",        lambda: _fetch_gnews("global", 4)),
+            ("DDG",          lambda: _fetch_ddg_headlines(f"world breaking news today {DATE_HUMAN}", 5)),
+            ("WebSearchAPI", lambda: _fetch_websearchapi(f"global world news today {DATE_HUMAN}", 5)),
+            ("Currents",     lambda: _fetch_currents("global", 4)),
+            ("Finnhub",      lambda: _fetch_finnhub_news("global", 4)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
                 try:
-                    res = future.result() or []
-                    if key == "glob":
-                        glob_news = res
-                    elif key == "india":
-                        india_news = res
-                    elif key == "tech":
-                        tech_news = res
-                except Exception as exc:
-                    _log("WARN", f"  fallback fetch [{key}] failed: {exc}")
+                    result = future.result(timeout=5)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    def _supplement_india() -> list:
+        """Fetch India news from all available free sources."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS",      lambda: _fetch_rss_section("india", 6)),
+            ("NewsAPI",  lambda: _fetch_newsapi("india", 6)),
+            ("GNews",    lambda: _fetch_gnews("india", 4)),
+            ("DDG",      lambda: _fetch_ddg_headlines(f"India news today {DATE_HUMAN}", 5)),
+            ("Currents", lambda: _fetch_currents("india", 4)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=5)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    def _supplement_tech() -> list:
+        """Fetch tech/AI news from all available free sources."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS",      lambda: _fetch_rss_section("tech", 6)),
+            ("NewsAPI",  lambda: _fetch_newsapi("tech", 6)),
+            ("GNews",    lambda: _fetch_gnews("tech", 4)),
+            ("DDG",      lambda: _fetch_ddg_headlines(f"AI technology startup news today {DATE_HUMAN}", 5)),
+            ("Currents", lambda: _fetch_currents("tech", 4)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=5)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    # Run all three section supplements in parallel — wait for ALL to complete
+    _log("INFO", "  Enriching with supplementary sources (parallel, 60s timeout) ...")
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        sup_glob_fut = pool.submit(_supplement_global)
+        sup_india_fut = pool.submit(_supplement_india)
+        sup_tech_fut = pool.submit(_supplement_tech)
+
+        # Wait for ALL futures — don't proceed to AI until all data is collected
+        for fut, label, target in [
+            (sup_glob_fut, "global", "glob"),
+            (sup_india_fut, "india", "india"),
+            (sup_tech_fut, "tech", "tech"),
+        ]:
+            try:
+                extra = fut.result(timeout=_SUPPLEMENT_TIMEOUT) or []
+                if target == "glob":
+                    glob_news.extend(extra)
+                elif target == "india":
+                    india_news.extend(extra)
+                elif target == "tech":
+                    tech_news.extend(extra)
+                if extra:
+                    _log("DATA", f"  Supplement [{label}]: +{len(extra)} items")
+            except Exception as exc:
+                _log("WARN", f"  Supplement [{label}] timed out or failed: {exc}")
 
     # Deduplicate — remove cross-section duplicates (same story in global + india, etc.)
     glob_news, india_news, tech_news = _dedup_news(glob_news, india_news, tech_news)

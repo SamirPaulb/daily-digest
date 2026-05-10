@@ -15,9 +15,13 @@ Fetch top gainers/losers
   US:    Yahoo screener (mcap ≥ $10B) → Alpha Vantage
   India: NSE equity-stockIndices (Nifty 50)
     ↓
-Fetch news (Tavily → NewsAPI → GNews → NYTimes → Currents → Mediastack → Finnhub → Exa → RSS)
+Fetch news — ALL sources in parallel (Tavily + RSS + NewsAPI + GNews + DDG + WebSearchAPI + Currents + Finnhub + Exa)
     ↓
-AI generates digest sections (13+ providers with fallback chain)
+Wait for ALL sources to complete (60s timeout) — maximum data richness
+    ↓
+Deduplicate across sections
+    ↓
+AI generates digest from rich data pool (15-25 items/section → picks best 7-10)
     ↓
 Script injects real market numbers (never AI-generated)
     ↓
@@ -28,13 +32,32 @@ Converts to HTML → commits to repo
 Main blog fetches HTML via raw.githubusercontent.com
 ```
 
+## News Data Pipeline
+
+All sources run in parallel. AI receives the combined, deduplicated pool and picks the best stories.
+
+| Source | Type | Sections | Key Required |
+|--------|------|----------|--------------|
+| Tavily | AI search | Global, India, Tech, Finance | Yes |
+| RSS feeds | 25+ feeds (BBC, Reuters, TOI, TechCrunch, etc.) | Global, India, Tech | No |
+| NewsAPI | Structured news | Global, India, Tech | Yes |
+| GNews | Structured news | Global, India, Tech | Yes |
+| DDG News | DuckDuckGo news API (`ddgs` package) | Global, India, Tech | No |
+| WebSearchAPI.ai | Google-powered search | Global | Yes |
+| NYTimes | Top Stories / Most Popular | Global, Tech | Yes |
+| Currents | Global news | Global, India, Tech | Yes |
+| Mediastack | Multi-source | Global, India, Tech | Yes |
+| Finnhub News | Market news | Global | Yes |
+| Exa | Neural search | Global, India, Tech | Yes |
+| Mojeek | Independent search | All (last resort) | No |
+
 ## AI Provider Fallback Chain
 
 | Level | Providers | Type |
 |-------|-----------|------|
-| 1 | Gemini, OpenAI, OpenRouter/Perplexity, Z.AI, DeepSeek, xAI, Claude | Search-capable AI |
+| 1 | Gemini, OpenAI (`gpt-4.1`), OpenRouter (`openai/gpt-oss-120b:free`), Z.AI, DeepSeek, xAI, Claude | Search-capable AI |
 | 1.5 | Direct assembly | No AI — builds from pre-fetched data |
-| 2 | Gemini, OpenAI, DeepSeek, Z.AI, Groq, xAI, Mistral, OpenRouter, Fireworks, Moonshot, MiniMax, GitHub Models | Standard AI |
+| 2 | Gemini, OpenAI (`gpt-4.1-mini`), DeepSeek, Z.AI, Groq, xAI, Mistral, OpenRouter (`nvidia/nemotron-3-super:free`), Fireworks, Moonshot, MiniMax, GitHub Models | Standard AI |
 | 2.5 | Ollama (qwen2.5:7b Q4) | Local model on runner |
 | 3 | Data template | Markets + headlines only |
 | 4 | Blank template | Always succeeds |
@@ -42,7 +65,7 @@ Main blog fetches HTML via raw.githubusercontent.com
 
 ## GitHub Models (Free Tier)
 
-Uses `GH_MODELS_PAT` (PAT with `models:read` scope) for the GitHub Models endpoint at `models.github.ai`. Tries multiple models in order — if one fails or is unavailable, moves to the next:
+Uses `GH_MODELS_PAT` (PAT with `models:read` scope) for the GitHub Models endpoint at `models.github.ai`. Tries multiple models in order:
 
 1. `openai/gpt-4.1-mini` (primary)
 2. `deepseek/DeepSeek-V3-0324` (fallback)
@@ -63,12 +86,13 @@ Configurable via `GITHUB_MODEL` and `GITHUB_MODEL_FALLBACKS` variables.
 
 ### Required (at least one AI + one news)
 - `FINNHUB_API_KEY` — market data
-- `OPENROUTER_API_KEY` — AI (Perplexity search)
+- `OPENROUTER_API_KEY` — AI (free models: gpt-oss-120b, Nemotron 3 Super)
 
 ### Recommended
 - `GH_MODELS_PAT` — GitHub Models PAT (models:read scope, free tier with 4-model fallback)
 - `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `FIREWORKS_API_KEY` — AI redundancy
 - `TAVILY_API_KEY`, `NEWS_API_KEY`, `GNEWS_API_KEY` — news sources
+- `WEBSEARCHAPIAI_API_KEY` — Google-powered search (1000 free credits/month)
 - `ALPHAVANTAGE_API_KEY` — market data + US movers backup
 
 ### Optional (more redundancy)
