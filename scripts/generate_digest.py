@@ -315,12 +315,13 @@ SUMMARY RULES (CRITICAL — applies to ALL sections):
 - The summary must be informative enough that the reader fully understands the story WITHOUT clicking any link.
 - Don't just restate the headline — add context (who, what, why), numbers, impact, or what changed.
 - BAD: "- **India Fertilizer Crisis** — Reports say there is a crisis in the sector."
-- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus. [businessline.com](https://www.businessline.com/article)"
+- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus."
+- NEVER write "accessed via search", "source: X", or mention how you found the information. Just state the facts.
 
 SOURCE LINKS (optional — nice-to-have, never break output for this):
 - Some items in the source data include a [SRC:url] tag with the article URL.
-- When present, append a small source link at the END of the bullet: [domain.com](url)
-- Extract just the domain from the URL for display text (e.g. bbc.com, reuters.com).
+- When present, append a tiny link icon at the END of the bullet using EXACTLY this format: [**&#8599;**](url)
+- Example: - **Headline** — summary text. [**&#8599;**](https://example.com/article)
 - If NO [SRC:...] tag exists for an item, just omit the link — do NOT invent URLs.
 - This is optional. The digest is valid with or without links. Never hallucinate a URL.
 
@@ -349,8 +350,8 @@ summary: "One punchy sentence covering 2-3 top stories"
 
 ## [Section Name]
 
-- **Headline** — 1-2 sentence summary with context, numbers, or why it matters. [source.com](url)
-- **Headline** — What happened and what it means for the reader. [source.com](url)
+- **Headline** — 1-2 sentence summary with context, numbers, or why it matters. [**&#8599;**](url)
+- **Headline** — What happened and what it means for the reader. [**&#8599;**](url)
 
 ---
 
@@ -2920,17 +2921,8 @@ def main() -> None:
         html_body,
     )
 
-    # Make all links in Further Reading section open in new tab
-    # Find the Further Reading section and add target="_blank" to its links
-    def _add_target_blank(match: re.Match) -> str:
-        section = match.group(0)
-        return section.replace("<a ", '<a target="_blank" rel="noopener" ')
-    html_body = re.sub(
-        r"<h2>Further Reading</h2>.*",
-        _add_target_blank,
-        html_body,
-        flags=re.DOTALL,
-    )
+    # Make ALL links open in new tab (source links + Further Reading)
+    html_body = html_body.replace("<a ", '<a target="_blank" rel="noopener" ')
 
     OUTPUT_FILE.write_text(html_body, encoding="utf-8")
     _log("DONE", f"Written via [{source}]{f' · author: {author}' if author else ''} → {OUTPUT_FILE}")
