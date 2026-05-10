@@ -232,6 +232,10 @@ _JUNK_TITLE_FRAGMENTS = (
     "news live",
     "samachar",         # Hindi: "news" — generic aggregator titles
     "ताजा समाचार",      # Hindi: "latest news"
+    "horoscope",        # Not news — filler content
+    "horoscopes today",
+    "mock draft",       # Sports speculation, not news
+    "full broadcast",   # TV schedule listings, not news articles
 )
 
 # RSS feeds per section — tried in order when Exa has no key / returns nothing.
@@ -342,6 +346,8 @@ PICK 3-5 MORE of these based on what's most interesting/relevant today:
 - ## Insight of the Day — one powerful tweet, quote, or non-obvious observation
 
 SKIP RULE: If you lack sufficient data or context for ANY section (including optional ones), skip it entirely rather than padding with vague or invented content. Quality over quantity.
+
+SECTION NAMES: ONLY use section names from the lists above (## Global News, ## India, ## AI & Tech, etc.). Do NOT invent new section names like "Developer Community Highlights" or "Developer News". Do NOT repeat the same stories in multiple sections.
 
 FORMAT:
 
