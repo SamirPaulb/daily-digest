@@ -45,6 +45,9 @@ API KEYS — set as GitHub Secrets:
   FINNHUB_API_KEY  — finnhub.io (Finnhub market news + quote fallback for indices)
   TWELVEDATA_API_KEY — twelvedata.com (backup quote source for indices/stocks/crypto/forex)
   WEBSEARCHAPIAI_API_KEY — websearchapi.ai (Google-powered search, 1000 free credits/month)
+  NEWSDATAIO_API_KEY — newsdata.io (200 credits/day, structured news with categories)
+  WORLDNEWSAPI_API_KEY — worldnewsapi.com (top-news clustered, 50 free requests/day)
+  NEWSCATCHERAPI_API_KEY — newscatcherapi.com (v3 headlines, NLP-enriched, 1000 free/month)
   (set any subset — only providers with keys are tried)
 
 NOTE: GITHUB_TOKEN is auto-injected in Actions. For GitHub Models, set GH_MODELS_PAT
@@ -1500,6 +1503,154 @@ _MEDIASTACK_PARAMS: dict[str, dict] = {
 }
 
 
+def _fetch_newsdata(section: str = "global", n: int = 4) -> list:
+    """
+    Fetch news from NewsData.io /api/1/latest.
+    Free tier: 200 credits/day. 1 credit per request.
+    Ref: https://newsdata.io/documentation
+    Response: {"status": "success", "results": [{"title", "description", "link", "source_name", ...}]}
+    """
+    api_key = os.environ.get("NEWSDATAIO_API_KEY", "")
+    if not api_key:
+        return []
+    # Section → category + country mapping
+    params: dict[str, str] = {"apikey": api_key, "language": "en", "removeduplicate": "1", "size": str(n + 2)}
+    if section == "global":
+        params["category"] = "world,politics,business"
+    elif section == "india":
+        params["country"] = "in"
+        params["category"] = "politics,business,top"
+    elif section == "tech":
+        params["category"] = "technology,science"
+    try:
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+        url = f"https://newsdata.io/api/1/latest?{qs}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (digest-bot/1.0)"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        if data.get("status") != "success":
+            return []
+        items: list[str] = []
+        for art in (data.get("results") or []):
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("description") or "").strip()
+            art_url = (art.get("link") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  NewsData [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  NewsData [{section}] failed: {exc}")
+        return []
+
+
+def _fetch_worldnewsapi(section: str = "global", n: int = 4) -> list:
+    """
+    Fetch top news from WorldNewsAPI.com /top-news endpoint.
+    Free tier: 50 requests/day. 1 credit per request.
+    Uses clustered top news (most impactful stories).
+    Ref: https://worldnewsapi.com/docs
+    Response: {"top_news": [{"news": [{"title", "url", "summary", ...}]}]}
+    Auth: x-api-key header.
+    """
+    api_key = os.environ.get("WORLDNEWSAPI_API_KEY", "")
+    if not api_key:
+        return []
+    # Section → source-country mapping
+    country = "us" if section in ("global", "tech") else "in"
+    try:
+        url = (f"https://api.worldnewsapi.com/top-news"
+               f"?source-country={country}&language=en&headlines-only=false")
+        req = urllib.request.Request(url, headers={
+            "x-api-key": api_key,
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for cluster in (data.get("top_news") or []):
+            if len(items) >= n:
+                break
+            # Each cluster has multiple articles — take the first one
+            articles = cluster.get("news") or []
+            if not articles:
+                continue
+            art = articles[0]
+            title = (art.get("title") or "").strip()
+            desc = (art.get("summary") or art.get("text") or "").strip()[:200]
+            art_url = (art.get("url") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  WorldNewsAPI [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  WorldNewsAPI [{section}] failed: {exc}")
+        return []
+
+
+def _fetch_newscatcher(section: str = "global", n: int = 4) -> list:
+    """
+    Fetch latest headlines from NewsCatcher API v3 /api/latest_headlines.
+    Auth: x-api-key header.
+    Ref: https://www.newscatcherapi.com/docs
+    Response: {"articles": [{"title", "link", "excerpt", "summary", ...}]}
+    """
+    api_key = os.environ.get("NEWSCATCHERAPI_API_KEY", "")
+    if not api_key:
+        return []
+    params: dict[str, str] = {
+        "lang": "en",
+        "when": "24h",
+        "page_size": str(n + 2),
+        "ranked_only": "true",
+        "sort_by": "relevancy",
+    }
+    if section == "global":
+        params["countries"] = "US,GB"
+        params["not_theme"] = "Sports,Entertainment,Lifestyle"
+    elif section == "india":
+        params["countries"] = "IN"
+    elif section == "tech":
+        params["theme"] = "Tech,Science"
+    try:
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+        url = f"https://v3-api.newscatcherapi.com/api/latest_headlines?{qs}"
+        req = urllib.request.Request(url, headers={
+            "x-api-token": api_key,
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for art in (data.get("articles") or []):
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("excerpt") or art.get("summary") or "").strip()[:200]
+            art_url = (art.get("link") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  NewsCatcher [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  NewsCatcher [{section}] failed: {exc}")
+        return []
+
+
 def _fetch_mediastack(section: str = "global", n: int = 4) -> list:
     """
     Fetch news from Mediastack API.
@@ -1692,6 +1843,12 @@ def _fetch_free_search(query: str, n: int = 4, section: str = "global") -> list:
     if results:
         return results
     results = _fetch_finnhub_news(section, n)
+    if results:
+        return results
+    results = _fetch_newsdata(section, n)
+    if results:
+        return results
+    results = _fetch_worldnewsapi(section, n)
     if results:
         return results
     results = _fetch_websearchapi(query, n)
@@ -2421,6 +2578,9 @@ def main() -> None:
             ("WebSearchAPI", lambda: _fetch_websearchapi(f"global world news today {DATE_HUMAN}", 5)),
             ("Currents",     lambda: _fetch_currents("global", 4)),
             ("Finnhub",      lambda: _fetch_finnhub_news("global", 4)),
+            ("NewsData",     lambda: _fetch_newsdata("global", 4)),
+            ("WorldNews",    lambda: _fetch_worldnewsapi("global", 4)),
+            ("NewsCatcher",  lambda: _fetch_newscatcher("global", 4)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
@@ -2442,6 +2602,9 @@ def main() -> None:
             ("GNews",    lambda: _fetch_gnews("india", 4)),
             ("DDG",      lambda: _fetch_ddg_headlines(f"India news today {DATE_HUMAN}", 5)),
             ("Currents", lambda: _fetch_currents("india", 4)),
+            ("NewsData", lambda: _fetch_newsdata("india", 4)),
+            ("WorldNews", lambda: _fetch_worldnewsapi("india", 4)),
+            ("NewsCatcher", lambda: _fetch_newscatcher("india", 4)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
@@ -2463,6 +2626,9 @@ def main() -> None:
             ("GNews",    lambda: _fetch_gnews("tech", 4)),
             ("DDG",      lambda: _fetch_ddg_headlines(f"AI technology startup news today {DATE_HUMAN}", 5)),
             ("Currents", lambda: _fetch_currents("tech", 4)),
+            ("NewsData", lambda: _fetch_newsdata("tech", 4)),
+            ("WorldNews", lambda: _fetch_worldnewsapi("tech", 4)),
+            ("NewsCatcher", lambda: _fetch_newscatcher("tech", 4)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
@@ -2921,8 +3087,12 @@ def main() -> None:
         html_body,
     )
 
-    # Make ALL links open in new tab (source links + Further Reading)
+    # Make ALL links open in new tab + style source arrows blue
     html_body = html_body.replace("<a ", '<a target="_blank" rel="noopener" ')
+    html_body = html_body.replace(
+        "<strong>&#8599;</strong>",
+        '<strong style="color:#2563eb;text-decoration:none">&#8599;</strong>',
+    )
 
     OUTPUT_FILE.write_text(html_body, encoding="utf-8")
     _log("DONE", f"Written via [{source}]{f' · author: {author}' if author else ''} → {OUTPUT_FILE}")
@@ -3069,7 +3239,7 @@ def test_all() -> None:
         else:
             _log("FAIL", f"  Ollama ({ollama_model}): empty response")
     except urllib.error.URLError:
-        _log("SKIP", f"  Ollama: server not running (install with: curl -fsSL https://ollama.ai/install.sh | sh)")
+        _log("SKIP", f"  Ollama: server not running (install with: curl -fsSL https://ollama.com/install.sh | sh)")
     except Exception as e:
         _log("FAIL", f"  Ollama: {type(e).__name__}: {e}")
 

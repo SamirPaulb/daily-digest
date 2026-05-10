@@ -83,6 +83,9 @@ jobs:
           ZAI_API_KEY:         ${{ secrets.ZAI_API_KEY }}
           GH_MODELS_PAT:       ${{ secrets.GH_MODELS_PAT }}
           WEBSEARCHAPIAI_API_KEY: ${{ secrets.WEBSEARCHAPIAI_API_KEY }}
+          NEWSDATAIO_API_KEY: ${{ secrets.NEWSDATAIO_API_KEY }}
+          WORLDNEWSAPI_API_KEY: ${{ secrets.WORLDNEWSAPI_API_KEY }}
+          NEWSCATCHERAPI_API_KEY: ${{ secrets.NEWSCATCHERAPI_API_KEY }}
           # Model names (from Variables — update when deprecated, no code change)
           CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
           CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}
@@ -117,7 +120,7 @@ jobs:
         run: |
           if [ "${{ inputs.test_mode }}" = "true" ]; then
             # Install Ollama for test mode
-            curl -fsSL https://ollama.ai/install.sh | sh
+            curl -fsSL https://ollama.com/install.sh | sh || curl -fsSL https://ollama.ai/install.sh | sh
             ollama serve &
             OLLAMA_PID=$!
             for i in $(seq 1 30); do
@@ -236,7 +239,7 @@ jobs:
           OLLAMA_MODEL: qwen2.5:7b-instruct-q4_K_M
         run: |
           # Install Ollama
-          curl -fsSL https://ollama.ai/install.sh | sh
+          curl -fsSL https://ollama.com/install.sh | sh || curl -fsSL https://ollama.ai/install.sh | sh
           # Start server
           ollama serve &
           for i in $(seq 1 30); do
