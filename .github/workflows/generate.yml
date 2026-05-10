@@ -82,6 +82,7 @@ jobs:
           MINIMAX_API_KEY:     ${{ secrets.MINIMAX_API_KEY }}
           ZAI_API_KEY:         ${{ secrets.ZAI_API_KEY }}
           GH_MODELS_PAT:       ${{ secrets.GH_MODELS_PAT }}
+          WEBSEARCHAPIAI_API_KEY: ${{ secrets.WEBSEARCHAPIAI_API_KEY }}
           # Model names (from Variables — update when deprecated, no code change)
           CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
           CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}

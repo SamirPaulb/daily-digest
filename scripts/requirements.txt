@@ -1,8 +1,8 @@
-feedparser
-anthropic
-openai
-google-genai
-markdown
-exa-py
-tavily-python
-ddgs
+feedparser~=6.0       # RSS/Atom feed parser (stable since 2012)
+anthropic~=0.100      # Claude API client
+openai~=2.36          # OpenAI/OpenRouter/GitHub Models client
+google-genai~=2.0     # Gemini API client
+markdown~=3.10        # Markdown → HTML converter
+exa-py~=2.12          # Exa neural search
+tavily-python~=0.7    # Tavily AI search
+ddgs>=9.0             # DuckDuckGo news search (renamed from duckduckgo-search)

@@ -1123,7 +1123,7 @@ def _fetch_ddg_headlines(query: str, n: int = 4) -> list:
         _log("WARN", "  DDG: ddgs package not installed")
         return []
     try:
-        results = DDGS().news(keywords=query, region="wt-wt", safesearch="off",
+        results = DDGS().news(query, region="wt-wt", safesearch="off",
                               timelimit="d", max_results=n + 2)
         items: list[str] = []
         for r in (results or []):
