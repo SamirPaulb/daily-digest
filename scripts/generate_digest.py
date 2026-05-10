@@ -303,10 +303,18 @@ STRUCTURE RULES:
 1. Start with YAML front matter (title, date, summary)
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
-4. Each section: 7-10 bullet points, format: - **Bold headline** — brief detail.
+4. Each section: 7-10 bullet points, format: - **Bold headline** — 1-2 sentence summary explaining what happened and why it matters.
 5. ## Global News and ## India are MANDATORY. ALL sections MUST have 7-10 items each — never fewer than 7.
 6. Be smart about what's newsworthy TODAY — skip optional sections with nothing interesting
 7. Do NOT include a ## Further Reading section (it is appended automatically by the script)
+8. If you do NOT have enough context or data for a story, SKIP it entirely. Never fabricate, guess, or generate vague filler content. It is better to have 5 strong items than 10 weak ones.
+
+SUMMARY RULES (CRITICAL — applies to ALL sections):
+- Every bullet MUST have a 1-2 sentence summary after the — dash.
+- The summary must be informative enough that the reader fully understands the story WITHOUT clicking any link.
+- Don't just restate the headline — add context (who, what, why), numbers, impact, or what changed.
+- BAD: "- **India Fertilizer Crisis** — Reports say there is a crisis in the sector."
+- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus."
 
 MANDATORY (always include, 5-10 items each):
 - ## Global News — geopolitics, world events, breaking news
@@ -321,6 +329,8 @@ PICK 3-5 MORE of these based on what's most interesting/relevant today:
 - ## Learning & Growth — one skill/course/book/resource worth exploring today
 - ## Insight of the Day — one powerful tweet, quote, or non-obvious observation
 
+SKIP RULE: If you lack sufficient data or context for ANY section (including optional ones), skip it entirely rather than padding with vague or invented content. Quality over quantity.
+
 FORMAT:
 
 ---
@@ -331,8 +341,8 @@ summary: "One punchy sentence covering 2-3 top stories"
 
 ## [Section Name]
 
-- **Headline** — brief detail.
-- **Headline** — brief detail.
+- **Headline** — 1-2 sentence summary with context, numbers, or why it matters.
+- **Headline** — What happened and what it means for the reader.
 
 ---
 
@@ -2743,6 +2753,12 @@ def main() -> None:
                     title = line.split(":", 1)[1].strip().strip('"')
                 elif line.startswith("summary:"):
                     summary = line.split(":", 1)[1].strip().strip('"')
+
+    # Normalize --- separators: ensure blank lines around them so markdown parser
+    # treats them as <hr> (not setext heading underlines). Also ensure ## headings
+    # have a blank line before them (required for some parsers).
+    body_md = re.sub(r"\n*---\n*", "\n\n---\n\n", body_md)
+    body_md = re.sub(r"([^\n])\n(## )", r"\1\n\n\2", body_md)
 
     # Convert markdown body to HTML
     html_body = md_lib.markdown(
