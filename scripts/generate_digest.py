@@ -315,7 +315,14 @@ SUMMARY RULES (CRITICAL — applies to ALL sections):
 - The summary must be informative enough that the reader fully understands the story WITHOUT clicking any link.
 - Don't just restate the headline — add context (who, what, why), numbers, impact, or what changed.
 - BAD: "- **India Fertilizer Crisis** — Reports say there is a crisis in the sector."
-- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus."
+- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus. [businessline.com](https://www.businessline.com/article)"
+
+SOURCE LINKS (optional — nice-to-have, never break output for this):
+- Some items in the source data include a [SRC:url] tag with the article URL.
+- When present, append a small source link at the END of the bullet: [domain.com](url)
+- Extract just the domain from the URL for display text (e.g. bbc.com, reuters.com).
+- If NO [SRC:...] tag exists for an item, just omit the link — do NOT invent URLs.
+- This is optional. The digest is valid with or without links. Never hallucinate a URL.
 
 MANDATORY (always include, 5-10 items each):
 - ## Global News — geopolitics, world events, breaking news
@@ -342,8 +349,8 @@ summary: "One punchy sentence covering 2-3 top stories"
 
 ## [Section Name]
 
-- **Headline** — 1-2 sentence summary with context, numbers, or why it matters.
-- **Headline** — What happened and what it means for the reader.
+- **Headline** — 1-2 sentence summary with context, numbers, or why it matters. [source.com](url)
+- **Headline** — What happened and what it means for the reader. [source.com](url)
 
 ---
 
@@ -1033,7 +1040,8 @@ def _fetch_hn_headlines(n: int = 8) -> list:
             if any(title.lower().startswith(p) for p in _HN_META_PREFIXES):
                 continue
             if item.get("type") == "story" and title:
-                titles.append(title)
+                hn_url = item.get("url") or f"https://news.ycombinator.com/item?id={story_id}"
+                titles.append(f"{title} [SRC:{hn_url}]")
         except Exception:
             pass
         time.sleep(0.05)  # gentle rate limiting
@@ -1090,7 +1098,9 @@ def _fetch_rss_headlines(url: str, n: int = 4) -> list:
                 or ""
             ).strip()
             brief = _strip_html_brief(desc_raw).split(". ")[0] if desc_raw else ""
-            items.append(f"**{title}** — {brief}." if brief else f"**{title}**")
+            entry_url = (entry.get("link") or "").strip()
+            url_tag = f" [SRC:{entry_url}]" if entry_url else ""
+            items.append(f"**{title}** — {brief}.{url_tag}" if brief else f"**{title}**{url_tag}")
         if items:
             _log("DATA", f"  RSS: {len(items)} results — {url.split('/')[2]}")
         return items
@@ -1134,7 +1144,9 @@ def _fetch_ddg_headlines(query: str, n: int = 4) -> list:
             if not title or _is_junk_title(title):
                 continue
             brief = body.split(". ")[0][:150] if body else ""
-            items.append(f"**{title}** — {brief}." if brief else f"**{title}**")
+            ddg_url = (r.get("url") or "").strip()
+            url_tag = f" [SRC:{ddg_url}]" if ddg_url else ""
+            items.append(f"**{title}** — {brief}.{url_tag}" if brief else f"**{title}**{url_tag}")
         _log("DATA", f"  DDG news: {len(items)} results")
         return items
     except Exception as exc:
@@ -1230,7 +1242,9 @@ def _fetch_exa_headlines(query: str, n: int = 4) -> list:
                 brief = str(highlights[0]).strip()[:150]
             elif text:
                 brief = text.split(". ")[0].strip()[:150]
-            items.append(f"**{title}** — {brief}." if brief else f"**{title}**")
+            exa_url = (getattr(r, "url", None) or "").strip()
+            url_tag = f" [SRC:{exa_url}]" if exa_url else ""
+            items.append(f"**{title}** — {brief}.{url_tag}" if brief else f"**{title}**{url_tag}")
         _log("DATA", f"  Exa: {len(items)} results")
         return items
     except Exception as exc:
@@ -1244,11 +1258,12 @@ def _fetch_exa_headlines(query: str, n: int = 4) -> list:
 # All require API keys set as GitHub Secrets.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _fmt_headline(title: str, desc: str = "") -> str:
+def _fmt_headline(title: str, desc: str = "", url: str = "") -> str:
     """
-    Format a title + description into a digest headline string.
+    Format a title + description + optional URL into a digest headline string.
     Strips " - Source Name" suffixes that NewsAPI and others append to titles
     (e.g. "Tesla cuts prices — Reuters" → "Tesla cuts prices").
+    URL is appended as [SRC:url] tag for the AI to use as a source link.
     """
     # Strip trailing " - Source" / " | Source" / " – Source" suffix.
     # Only strip if the part after the separator is ≤ 50 chars (source name, not content).
@@ -1261,7 +1276,10 @@ def _fmt_headline(title: str, desc: str = "") -> str:
     if not title:
         return ""
     brief = _strip_html_brief(desc).split(". ")[0][:150] if desc else ""
-    return f"**{title}** — {brief}." if brief else f"**{title}**"
+    url_tag = f" [SRC:{url}]" if url else ""
+    if brief:
+        return f"**{title}** — {brief}.{url_tag}"
+    return f"**{title}**{url_tag}"
 
 
 # Section → NewsAPI /v2/top-headlines query parameters.
@@ -1306,7 +1324,8 @@ def _fetch_newsapi(section: str = "global", n: int = 4) -> list:
             desc  = (art.get("description") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  NewsAPI [{section}]: {len(items)} results")
@@ -1356,7 +1375,8 @@ def _fetch_gnews(section: str = "global", n: int = 4) -> list:
             desc  = (art.get("description") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  GNews [{section}]: {len(items)} results")
@@ -1409,7 +1429,8 @@ def _fetch_currents(section: str = "global", n: int = 4) -> list:
             desc  = (art.get("description") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  Currents [{section}]: {len(items)} results")
@@ -1457,7 +1478,8 @@ def _fetch_finnhub_news(section: str = "global", n: int = 4) -> list:
             desc  = (art.get("summary") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  Finnhub news [{section}]: {len(items)} results")
@@ -1503,7 +1525,8 @@ def _fetch_mediastack(section: str = "global", n: int = 4) -> list:
             desc = (art.get("description") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  Mediastack [{section}]: {len(items)} results")
@@ -1551,7 +1574,8 @@ def _fetch_nytimes(section: str = "global", n: int = 4) -> list:
             desc = (art.get("abstract") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         if items:
@@ -1574,7 +1598,8 @@ def _fetch_nytimes(section: str = "global", n: int = 4) -> list:
             desc = (art.get("abstract") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (art.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         _log("DATA", f"  NYTimes MostPopular: {len(items)} results")
@@ -1622,7 +1647,8 @@ def _fetch_websearchapi(query: str, n: int = 4) -> list:
             desc = (r.get("description") or "").strip()
             if not title or _is_junk_title(title):
                 continue
-            h = _fmt_headline(title, desc)
+            art_url = (r.get("url") or "").strip()
+            h = _fmt_headline(title, desc, art_url)
             if h:
                 items.append(h)
         if items:
@@ -1719,7 +1745,9 @@ def _fetch_tavily_section(label: str, query: str,
             content = (r.get("content") or "").strip()
             brief   = content.split(". ")[0][:150] if content else ""
             if title:
-                bullets.append(f"**{title}** — {brief}." if brief else f"**{title}**")
+                tav_url = (r.get("url") or "").strip()
+                url_tag = f" [SRC:{tav_url}]" if tav_url else ""
+                bullets.append(f"**{title}** — {brief}.{url_tag}" if brief else f"**{title}**{url_tag}")
         _log("DATA", f"  Tavily [{label}]: {len(bullets)} bullets"
                      f"{', answer ok' if answer else ''}")
         return answer, bullets
