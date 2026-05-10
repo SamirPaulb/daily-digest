@@ -108,7 +108,7 @@ CFG = {
     # ── AI Provider Models ────────────────────────────────────────────────
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
-    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4o-mini-search-preview-2025-03-11"),
+    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4.1"),
     "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/sonar"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
@@ -116,7 +116,7 @@ CFG = {
     "CLAUDE_SEARCH_TOOL":      _env("CLAUDE_SEARCH_TOOL",      "web_search_20250305"),
 
     # Level 2 (standard, ranked by quality — same models, no search):
-    "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4o-mini"),
+    "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4.1-mini"),
     "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "google/gemini-2.0-flash:free"),
     "GROQ_MODEL":              _env("GROQ_MODEL",              "llama-3.3-70b-versatile"),
     "MISTRAL_MODEL":           _env("MISTRAL_MODEL",           "mistral-small-latest"),
@@ -2755,9 +2755,10 @@ def main() -> None:
                     summary = line.split(":", 1)[1].strip().strip('"')
 
     # Normalize --- separators: ensure blank lines around them so markdown parser
-    # treats them as <hr> (not setext heading underlines). Also ensure ## headings
-    # have a blank line before them (required for some parsers).
-    body_md = re.sub(r"\n*---\n*", "\n\n---\n\n", body_md)
+    # treats them as <hr> (not setext heading underlines). Only match --- on its
+    # own line (not inside table separators like |-------|-------|--------|).
+    # Also ensure ## headings have a blank line before them.
+    body_md = re.sub(r"(?m)\n*^-{3,}$\n*", "\n\n---\n\n", body_md)
     body_md = re.sub(r"([^\n])\n(## )", r"\1\n\n\2", body_md)
 
     # Convert markdown body to HTML
