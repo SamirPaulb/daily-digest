@@ -100,7 +100,7 @@ Workflow-level fallbacks: GitHub AI Inference → Vercel AI Gateway → Ollama i
 | India movers | NSE equity-stockIndices | Skipped if unavailable (geo-blocked outside India) |
 
 **Notes:**
-- Crypto symbols (e.g. Bitcoin `BTC-USD`) skip Alpha Vantage — it only returns a real-time exchange rate with hardcoded 0.00% change, not a useful daily % change.
+- Crypto (`BTC-USD`) and forex (`USDINR=X`) skip Alpha Vantage — it only returns a real-time exchange rate with hardcoded 0.00% change, not a useful daily % change.
 - TradingView fallback uses the public scanner API (`scanner.tradingview.com/global/scan`) — no API key, no npm required.
 
 ## GitHub Models (Free Tier)

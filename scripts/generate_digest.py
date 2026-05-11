@@ -1037,13 +1037,15 @@ def _fetch_market_data() -> dict:
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
         # Priority: Finnhub → Alpha Vantage → Yahoo → TwelveData → Massive → TradingView
-        # Exception: crypto (-USD) skips Alpha Vantage because it only returns
-        # a real-time exchange rate with hardcoded 0.00% change — not useful.
+        # Exception: crypto (-USD) and forex (=X) skip Alpha Vantage — it only returns
+        # a real-time exchange rate with hardcoded 0.00% change, not useful daily % change.
         q = _fetch_finnhub_quote(sym)
         if q:
             _log("DATA", f"  {label} (Finnhub): {q['price']} ({q['change']})")
             return label, q
-        if "-USD" not in sym:
+        # Skip Alpha Vantage for crypto (-USD) and forex (=X): it only returns
+        # a real-time exchange rate with hardcoded 0.00% change — not useful.
+        if "-USD" not in sym and "=X" not in sym:
             q = _fetch_alphavantage_quote(sym)
             if q:
                 _log("DATA", f"  {label} (AlphaVantage): {q['price']} ({q['change']})")
