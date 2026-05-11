@@ -2945,15 +2945,15 @@ def main() -> None:
 
         india_movers_md = ""
         if india_gainers:
-            india_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>'
+            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>'
         if india_losers:
-            india_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">Nifty 50 Losers: {_movers_line(india_losers)}</p>'
+            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Losers: {_movers_line(india_losers)}</p>'
 
         us_movers_md = ""
         if us_gainers:
-            us_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">S&P 500 Gainers: {_movers_line(us_gainers)}</p>'
+            us_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">S&P 500 Gainers: {_movers_line(us_gainers)}</p>'
         if us_losers:
-            us_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">S&P 500 Losers: {_movers_line(us_losers)}</p>'
+            us_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">S&P 500 Losers: {_movers_line(us_losers)}</p>'
 
         return f"""## Markets
 
