@@ -151,7 +151,7 @@ CFG = {
 
 def _openai_compatible_call(
     api_key_env: str, base_url_key: str, model_cfg_key: str, prompt: str,
-    timeout: float = 600.0, max_tokens: int = 4096,
+    timeout: float = 600.0, max_tokens: int = 8192,
     extra_body: Optional[dict] = None,
 ) -> str:
     """
@@ -360,10 +360,12 @@ MANDATORY (always include, 7-10 items each):
 - ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
 - ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
 
-INCLUDE IF DATA AVAILABLE (3-5 items each — shorter is fine):
+ALSO INCLUDE (3-5 items each — you MUST include these if pre-fetched data is available below):
 - ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
 - ## Career & Opportunities — hiring trends, hot skills, remote jobs, career moves
 - ## Personal Finance — savings tips, rate changes, tax, insurance, budgeting
+
+OPTIONAL (include if space allows):
 - ## Learning & Growth — one skill/course/book/resource worth exploring today
 - ## Insight of the Day — one powerful tweet, quote, or non-obvious observation
 
@@ -1206,9 +1208,19 @@ def _fetch_rss_headlines(url: str, n: int = 4) -> list:
             _log("WARN", f"  RSS {url}: unparseable — {d.get('bozo_exception')}")
             return []
         items: list[str] = []
+        cutoff = time.time() - 48 * 3600  # 48 hours ago
         for entry in d.entries:
             if len(items) >= n:
                 break
+            # Skip stale entries (older than 48 hours)
+            pub = entry.get("published_parsed") or entry.get("updated_parsed")
+            if pub:
+                try:
+                    entry_ts = time.mktime(pub)
+                    if entry_ts < cutoff:
+                        continue
+                except (ValueError, OverflowError):
+                    pass  # unparseable date — keep the entry
             title = (entry.get("title") or "").strip()
             if not title or _is_junk_title(title):
                 continue
@@ -2208,7 +2220,7 @@ def _make_level1(prompt: str) -> list:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=600.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
-            max_tokens=4096,
+            max_tokens=8192,
             tools=[{"type": CFG["CLAUDE_SEARCH_TOOL"]}],
             messages=[{"role": "user", "content": prompt}],
         )
@@ -2227,7 +2239,7 @@ def _make_level1(prompt: str) -> list:
             client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=600.0)
             resp = client.chat.completions.create(
                 model=CFG["ZAI_MODEL"],
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
                 tools=[{"type": "web_search", "web_search": {"enable": True}}],
             )
@@ -2319,7 +2331,7 @@ def _make_level2(prompt: str) -> list:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=600.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         for block in resp.content:
@@ -2332,7 +2344,7 @@ def _make_level2(prompt: str) -> list:
         client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=600.0)
         resp = client.chat.completions.create(
             model=CFG["OPENAI_MODEL"],
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.choices[0].message.content or ""
