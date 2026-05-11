@@ -1146,9 +1146,9 @@ def _fetch_all_rss_section(section: str, n_per_feed: int = 3) -> list:
     items: list[str] = []
     with ThreadPoolExecutor(max_workers=min(len(urls), 10)) as pool:
         futures = {pool.submit(_fetch_rss_headlines, url, n_per_feed): url for url in urls}
-        for future in as_completed(futures, timeout=30):
+        for future in as_completed(futures, timeout=45):
             try:
-                result = future.result(timeout=5)
+                result = future.result(timeout=20)
                 if result:
                     items.extend(result)
             except Exception:
@@ -2598,7 +2598,7 @@ def main() -> None:
     # ALL fetchers run concurrently with generous timeouts. We WAIT for all to complete
     # (or timeout) before passing data to AI — ensures maximum data richness.
     # Public repo on GitHub Actions: no cost concern for runtime.
-    _SUPPLEMENT_TIMEOUT = 60  # seconds — wait for ALL sources to finish
+    _SUPPLEMENT_TIMEOUT = 90  # seconds — generous timeout, wait for ALL sources to finish
 
     def _supplement_global() -> list:
         """Fetch global news from all available free sources."""
@@ -2614,12 +2614,13 @@ def main() -> None:
             ("NewsData",     lambda: _fetch_newsdata("global", 4)),
             ("WorldNews",    lambda: _fetch_worldnewsapi("global", 4)),
             ("NewsCatcher",  lambda: _fetch_newscatcher("global", 4)),
+            ("GoogleNews",   lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=world+news+today&hl=en&gl=US&ceid=US:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
             for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
                 try:
-                    result = future.result(timeout=5)
+                    result = future.result(timeout=30)
                     if result:
                         items.extend(result)
                 except Exception:
@@ -2638,12 +2639,13 @@ def main() -> None:
             ("NewsData", lambda: _fetch_newsdata("india", 4)),
             ("WorldNews", lambda: _fetch_worldnewsapi("india", 4)),
             ("NewsCatcher", lambda: _fetch_newscatcher("india", 4)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
             for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
                 try:
-                    result = future.result(timeout=5)
+                    result = future.result(timeout=30)
                     if result:
                         items.extend(result)
                 except Exception:
@@ -2662,12 +2664,13 @@ def main() -> None:
             ("NewsData", lambda: _fetch_newsdata("tech", 4)),
             ("WorldNews", lambda: _fetch_worldnewsapi("tech", 4)),
             ("NewsCatcher", lambda: _fetch_newscatcher("tech", 4)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=AI+technology+startups&hl=en&gl=US&ceid=US:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
             futures = {pool.submit(fn): name for name, fn in fetchers}
             for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
                 try:
-                    result = future.result(timeout=5)
+                    result = future.result(timeout=30)
                     if result:
                         items.extend(result)
                 except Exception:

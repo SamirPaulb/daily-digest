@@ -52,12 +52,14 @@ daily-digest/
 
 ## News Sources
 
-All sources run in parallel. AI receives the combined, deduplicated pool and picks the best stories.
+ALL sources run in parallel (90s generous timeout). AI waits until every source completes or times out before generating — ensures maximum data richness. The AI receives up to 15 deduplicated items per section and picks the best 7-10, preferring major sources (Reuters, AP, BBC, Bloomberg).
 
 | Source | Type | Sections | Key Required |
 |--------|------|----------|--------------|
 | Tavily | AI search | Global, India, Tech, Finance | Yes |
-| RSS feeds | 25+ feeds (BBC, Reuters, TOI, TechCrunch, etc.) | Global, India, Tech | No |
+| RSS feeds | 30+ feeds fetched in parallel (BBC, Guardian, Bloomberg, Reddit, FT, TOI, TechCrunch, etc.) | Global, India, Tech | No |
+| Google News | RSS (top stories + search) | Global, India, Tech | No |
+| Reddit | r/worldnews RSS | Global | No |
 | NewsAPI | Structured news | Global, India, Tech | Yes |
 | GNews | Structured news | Global, India, Tech | Yes |
 | DDG News | DuckDuckGo news (`ddgs` package) | Global, India, Tech | No |
