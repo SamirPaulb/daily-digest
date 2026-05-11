@@ -151,7 +151,7 @@ CFG = {
 
 def _openai_compatible_call(
     api_key_env: str, base_url_key: str, model_cfg_key: str, prompt: str,
-    timeout: float = 600.0, max_tokens: int = 2048,
+    timeout: float = 600.0, max_tokens: int = 4096,
     extra_body: Optional[dict] = None,
 ) -> str:
     """
@@ -287,6 +287,26 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://www.technologyreview.com/feed/",                 # MIT Technology Review
         "https://www.forbes.com/innovation/feed",                 # Forbes Innovation
     ],
+    "startups": [
+        "https://techcrunch.com/category/venture/feed/",          # TechCrunch Venture/Funding
+        "https://news.crunchbase.com/feed/",                      # Crunchbase News
+        "https://feeds.feedburner.com/venturebeat/SZYF",          # VentureBeat
+        "https://news.ycombinator.com/rss",                       # Hacker News (startups/tech)
+    ],
+    "investing": [
+        "https://feeds.bloomberg.com/markets/news.rss",           # Bloomberg Markets
+        "https://www.cnbc.com/id/15839135/device/rss/rss.html",  # CNBC Investing
+        "https://feeds.feedburner.com/zaboravik/marketwatch",     # MarketWatch
+        "https://www.ft.com/rss/home/international",              # FT International
+    ],
+    "career": [
+        "https://hbr.org/resources/xml/rss/career.xml",           # HBR Career
+        "https://www.forbes.com/leadership/feed",                 # Forbes Leadership
+    ],
+    "personal_finance": [
+        "https://www.cnbc.com/id/10001054/device/rss/rss.html",  # CNBC Personal Finance
+        "https://feeds.feedburner.com/ndtvprofit-latest",          # NDTV Profit
+    ],
 }
 
 # RSS feeds for "Further Reading" section — diverse, high-quality sources
@@ -313,9 +333,9 @@ STRUCTURE RULES:
 1. Start with YAML front matter (title, date, summary)
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
-4. Each section: 7-10 bullet points, format: - **Bold headline** — 1-2 sentence summary explaining what happened and why it matters.
-5. ## Global News and ## India are MANDATORY. ALL sections MUST have 7-10 items each — never fewer than 7.
-6. Be smart about what's newsworthy TODAY — skip optional sections with nothing interesting
+4. Each MANDATORY section: 7-10 bullet points. Optional sections: 3-5 bullet points. Format: - **Bold headline** — 1-2 sentence summary explaining what happened and why it matters.
+5. ## Global News, ## India, ## AI & Tech, and ## Investing & Predictions are MANDATORY (7-10 items each). Optional sections (Startups, Career, Personal Finance, Learning, Insight) need only 3-5 items.
+6. ALWAYS include optional sections if pre-fetched data is available — do NOT skip them. Only skip if the data says "[no pre-fetched data]".
 7. Do NOT include a ## Further Reading section (it is appended automatically by the script)
 8. If you do NOT have enough context or data for a story, SKIP it entirely. Never fabricate, guess, or generate vague filler content. It is better to have 5 strong items than 10 weak ones.
 
@@ -334,13 +354,13 @@ SOURCE LINKS (optional — nice-to-have, never break output for this):
 - If NO [SRC:...] tag exists for an item, just omit the link — do NOT invent URLs.
 - This is optional. The digest is valid with or without links. Never hallucinate a URL.
 
-MANDATORY (always include, 5-10 items each):
+MANDATORY (always include, 7-10 items each):
 - ## Global News — geopolitics, world events, breaking news
 - ## India — Indian politics, economy, business, sports
 - ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
 - ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
 
-PICK 1-3 MORE of these based on what's most interesting/relevant today:
+INCLUDE IF DATA AVAILABLE (3-5 items each — shorter is fine):
 - ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
 - ## Career & Opportunities — hiring trends, hot skills, remote jobs, career moves
 - ## Personal Finance — savings tips, rate changes, tax, insurance, budgeting
@@ -376,6 +396,10 @@ def _prompt_with_rich_data(
     tech_news: list,
     mkt_commentary: str = "",
     search_hint: bool = False,
+    startups_news: list = None,
+    investing_news: list = None,
+    career_news: list = None,
+    pf_news: list = None,
 ) -> str:
     """
     Build a prompt pre-loaded with all pre-fetched real-time data.
@@ -396,13 +420,12 @@ def _prompt_with_rich_data(
     tech_combined = tech_news[:5] + [f"**{h}**" for h in hn[:5]]
 
     supplement = (
-        "\n\nYou have live web search — use it to fill sections like Startups & Funding, "
-        "Investing & Predictions, Career & Opportunities, and Personal Finance with REAL, "
+        "\n\nYou have live web search — use it to supplement any section with REAL, "
         "verifiable today's news. Only include items you can confirm via search. "
-        "For Global News, India, and AI & Tech — prefer the pre-fetched data below."
+        "Prefer the pre-fetched data below for all sections."
         if search_hint else
-        "\n\nFor sections without pre-fetched data: SKIP them rather than guessing. "
-        "Only output sections you have real data for."
+        "\n\nUse the pre-fetched data below for all sections. "
+        "If a section has no pre-fetched data, SKIP it rather than guessing."
     )
 
     return f"""\
@@ -416,10 +439,9 @@ NOTE: The Markets section (prices, indices) is handled separately by the script 
 do NOT generate any market data or prices. Focus ONLY on news and insights.{supplement}
 
 ACCURACY RULES (CRITICAL):
-1. News sections (Global, India, AI & Tech): use ONLY headlines from the PRE-FETCHED data below. \
+1. ALL sections have pre-fetched data below — use ONLY those headlines. \
 You may rephrase for brevity but NEVER invent a headline or event that isn't in the data.
-2. For sections without pre-fetched data (Startups, Investing, Career, Personal Finance, Learning): \
-SKIP THE SECTION ENTIRELY. Do NOT generate these sections unless you have real, verifiable data from your web search. \
+2. If a section's pre-fetched data says "[no pre-fetched data]", SKIP THE SECTION ENTIRELY. \
 Never invent company names, funding amounts, analyst names, price targets, or predictions. \
 A missing section is always better than a fabricated one.
 3. If a section would have fewer than 2 real, verifiable items, skip it completely.
@@ -433,8 +455,20 @@ GLOBAL NEWS (verified headlines):
 INDIA NEWS (verified headlines):
 {_sec(india_news, 'India')}
 
-TECH / AI / STARTUPS / JOBS (verified headlines):
-{_sec(tech_combined, 'tech/AI/startups/jobs')}
+TECH / AI (verified headlines):
+{_sec(tech_combined, 'tech/AI')}
+
+STARTUPS & FUNDING (verified headlines):
+{_sec(startups_news or [], 'startups/funding')}
+
+INVESTING & PREDICTIONS (verified headlines):
+{_sec(investing_news or [], 'investing/markets')}
+
+CAREER & OPPORTUNITIES (verified headlines):
+{_sec(career_news or [], 'career/jobs')}
+
+PERSONAL FINANCE (verified headlines):
+{_sec(pf_news or [], 'personal finance')}
 
 HACKER NEWS (developer community — real titles):
 {hn_lines}
@@ -2174,7 +2208,7 @@ def _make_level1(prompt: str) -> list:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=600.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
-            max_tokens=2048,
+            max_tokens=4096,
             tools=[{"type": CFG["CLAUDE_SEARCH_TOOL"]}],
             messages=[{"role": "user", "content": prompt}],
         )
@@ -2193,7 +2227,7 @@ def _make_level1(prompt: str) -> list:
             client = OpenAI(api_key=api_key, base_url=CFG["ZAI_BASE_URL"], timeout=600.0)
             resp = client.chat.completions.create(
                 model=CFG["ZAI_MODEL"],
-                max_tokens=2048,
+                max_tokens=4096,
                 messages=[{"role": "user", "content": prompt}],
                 tools=[{"type": "web_search", "web_search": {"enable": True}}],
             )
@@ -2253,7 +2287,7 @@ def _github_models_call(prompt: str) -> str:
             body = json.dumps({
                 "model": model_id,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 2048,
+                "max_tokens": 4096,
             }).encode()
             req = urllib.request.Request(
                 f"{CFG['GITHUB_MODELS_BASE_URL']}/chat/completions",
@@ -2285,7 +2319,7 @@ def _make_level2(prompt: str) -> list:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=600.0)
         resp = client.messages.create(
             model=CFG["CLAUDE_MODEL"],
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         for block in resp.content:
@@ -2298,7 +2332,7 @@ def _make_level2(prompt: str) -> list:
         client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=600.0)
         resp = client.chat.completions.create(
             model=CFG["OPENAI_MODEL"],
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.choices[0].message.content or ""
@@ -2756,18 +2790,107 @@ def main() -> None:
                     pass
         return items
 
-    # Run all three section supplements in parallel — wait for ALL to complete
+    def _supplement_startups() -> list:
+        """Fetch startup/funding news from RSS + Google News."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS-all",     lambda: _fetch_all_rss_section("startups", 3)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=startup+funding+round+acquisition&hl=en&gl=US&ceid=US:en", 5)),
+            ("DDG",         lambda: _fetch_ddg_headlines(f"startup funding round venture capital today {DATE_HUMAN}", 5)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=60)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    def _supplement_investing() -> list:
+        """Fetch investing/predictions news from RSS + Google News."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS-all",     lambda: _fetch_all_rss_section("investing", 3)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=stock+market+forecast+analyst+prediction&hl=en&gl=US&ceid=US:en", 5)),
+            ("DDG",         lambda: _fetch_ddg_headlines(f"stock market analyst forecast prediction today {DATE_HUMAN}", 5)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=60)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    def _supplement_career() -> list:
+        """Fetch career/jobs news from RSS + Google News."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS-all",     lambda: _fetch_all_rss_section("career", 3)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=hiring+layoffs+remote+jobs+tech+careers&hl=en&gl=US&ceid=US:en", 5)),
+            ("DDG",         lambda: _fetch_ddg_headlines(f"tech hiring layoffs remote jobs career news {DATE_HUMAN}", 5)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=60)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    def _supplement_personal_finance() -> list:
+        """Fetch personal finance news from RSS + Google News."""
+        items: list[str] = []
+        fetchers = [
+            ("RSS-all",     lambda: _fetch_all_rss_section("personal_finance", 3)),
+            ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=personal+finance+savings+tax+interest+rates&hl=en-IN&gl=IN&ceid=IN:en", 5)),
+            ("DDG",         lambda: _fetch_ddg_headlines(f"personal finance savings interest rate tax India {DATE_HUMAN}", 5)),
+        ]
+        with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+            futures = {pool.submit(fn): name for name, fn in fetchers}
+            for future in as_completed(futures, timeout=_SUPPLEMENT_TIMEOUT):
+                try:
+                    result = future.result(timeout=60)
+                    if result:
+                        items.extend(result)
+                except Exception:
+                    pass
+        return items
+
+    # Run ALL section supplements in parallel — wait for ALL to complete
     _log("INFO", "  Enriching with supplementary sources (parallel, 180s timeout) ...")
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    startups_news: list = []
+    investing_news: list = []
+    career_news: list = []
+    pf_news: list = []
+
+    with ThreadPoolExecutor(max_workers=7) as pool:
         sup_glob_fut = pool.submit(_supplement_global)
         sup_india_fut = pool.submit(_supplement_india)
         sup_tech_fut = pool.submit(_supplement_tech)
+        sup_startups_fut = pool.submit(_supplement_startups)
+        sup_investing_fut = pool.submit(_supplement_investing)
+        sup_career_fut = pool.submit(_supplement_career)
+        sup_pf_fut = pool.submit(_supplement_personal_finance)
 
         # Wait for ALL futures — don't proceed to AI until all data is collected
         for fut, label, target in [
             (sup_glob_fut, "global", "glob"),
             (sup_india_fut, "india", "india"),
             (sup_tech_fut, "tech", "tech"),
+            (sup_startups_fut, "startups", "startups"),
+            (sup_investing_fut, "investing", "investing"),
+            (sup_career_fut, "career", "career"),
+            (sup_pf_fut, "personal_finance", "pf"),
         ]:
             try:
                 extra = fut.result(timeout=_SUPPLEMENT_TIMEOUT) or []
@@ -2777,6 +2900,14 @@ def main() -> None:
                     india_news.extend(extra)
                 elif target == "tech":
                     tech_news.extend(extra)
+                elif target == "startups":
+                    startups_news.extend(extra)
+                elif target == "investing":
+                    investing_news.extend(extra)
+                elif target == "career":
+                    career_news.extend(extra)
+                elif target == "pf":
+                    pf_news.extend(extra)
                 if extra:
                     _log("DATA", f"  Supplement [{label}]: +{len(extra)} items")
             except Exception as exc:
@@ -2786,16 +2917,22 @@ def main() -> None:
     glob_news, india_news, tech_news = _dedup_news(glob_news, india_news, tech_news)
 
     _log("INFO", f"  Pre-fetch done: market={bool(market)}, hn={len(hn)}, "
-                 f"global={len(glob_news)}, india={len(india_news)}, tech={len(tech_news)}")
+                 f"global={len(glob_news)}, india={len(india_news)}, tech={len(tech_news)}, "
+                 f"startups={len(startups_news)}, investing={len(investing_news)}, "
+                 f"career={len(career_news)}, pf={len(pf_news)}")
 
     # Build prompts for Level 1 (search hint on) and Level 2/Ollama (self-contained)
     search_prompt = _prompt_with_rich_data(
         market, hn, glob_news, india_news, tech_news, mkt_commentary,
         search_hint=True,
+        startups_news=startups_news, investing_news=investing_news,
+        career_news=career_news, pf_news=pf_news,
     )
     data_prompt = _prompt_with_rich_data(
         market, hn, glob_news, india_news, tech_news, mkt_commentary,
         search_hint=False,
+        startups_news=startups_news, investing_news=investing_news,
+        career_news=career_news, pf_news=pf_news,
     )
 
     # ── Level 1: search-capable AI + pre-fetched context ───────────────────
