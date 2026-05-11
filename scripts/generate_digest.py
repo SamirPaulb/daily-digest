@@ -450,6 +450,7 @@ A missing section is always better than a fabricated one.
 4. Always prefer fewer accurate items over more questionable ones.
 5. Prefer stories from major sources (Reuters, AP, BBC, Bloomberg, TechCrunch, Economic Times) over lesser-known blogs or aggregators.
 6. NEVER fabricate numbers (funding amounts, percentage changes, price targets, analyst forecasts). If a number is not in the pre-fetched data or your search results, do not include it.
+7. NEVER pad sections with motivational quotes, "Quote of the day", generic tips, or filler content. Every bullet must be a real, dated news item from the pre-fetched data.
 
 GLOBAL NEWS (verified headlines):
 {_sec(glob_news, 'global')}
@@ -507,20 +508,21 @@ def _normalize(text: str) -> str:
     if idx > 0:
         text = text[idx:]
     # Normalize common heading variants to expected names
+    # Match with \n to avoid partial matches (e.g. "## Investing" inside "## Investing & Predictions")
     _HEADING_FIXES = {
-        "## World News": "## Global News",
-        "## International News": "## Global News",
-        "## Global": "## Global News",
-        "## Tech": "## AI & Tech",
-        "## Technology": "## AI & Tech",
-        "## AI and Tech": "## AI & Tech",
-        "## AI/Tech": "## AI & Tech",
-        "## Investing": "## Investing & Predictions",
-        "## Markets & Investing": "## Investing & Predictions",
-        "## Market Outlook": "## Investing & Predictions",
-        "## Startups": "## Startups & Funding",
-        "## Career": "## Career & Opportunities",
-        "## Personal Finance & Savings": "## Personal Finance",
+        "## World News\n": "## Global News\n",
+        "## International News\n": "## Global News\n",
+        "## Global\n": "## Global News\n",
+        "## Tech\n": "## AI & Tech\n",
+        "## Technology\n": "## AI & Tech\n",
+        "## AI and Tech\n": "## AI & Tech\n",
+        "## AI/Tech\n": "## AI & Tech\n",
+        "## Investing\n": "## Investing & Predictions\n",
+        "## Markets & Investing\n": "## Investing & Predictions\n",
+        "## Market Outlook\n": "## Investing & Predictions\n",
+        "## Startups\n": "## Startups & Funding\n",
+        "## Career\n": "## Career & Opportunities\n",
+        "## Personal Finance & Savings\n": "## Personal Finance\n",
     }
     for wrong, right in _HEADING_FIXES.items():
         text = text.replace(wrong, right)
