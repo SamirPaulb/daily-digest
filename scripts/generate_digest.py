@@ -337,11 +337,11 @@ SOURCE LINKS (optional — nice-to-have, never break output for this):
 MANDATORY (always include, 5-10 items each):
 - ## Global News — geopolitics, world events, breaking news
 - ## India — Indian politics, economy, business, sports
-
-PICK 3-5 MORE of these based on what's most interesting/relevant today:
 - ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
-- ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
 - ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
+
+PICK 1-3 MORE of these based on what's most interesting/relevant today:
+- ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
 - ## Career & Opportunities — hiring trends, hot skills, remote jobs, career moves
 - ## Personal Finance — savings tips, rate changes, tax, insurance, budgeting
 - ## Learning & Growth — one skill/course/book/resource worth exploring today
@@ -445,7 +445,7 @@ HACKER NEWS (developer community — real titles):
 # Output normalisation and validation
 # ──────────────────────────────────────────────────────────────────────────────
 
-_REQUIRED = ["## Global News", "## India"]  # These sections are mandatory in AI output
+_REQUIRED = ["## Global News", "## India", "## AI & Tech", "## Investing & Predictions"]  # Mandatory in AI output
 
 
 def _normalize(text: str) -> str:
@@ -2589,8 +2589,14 @@ def _run(providers: list) -> Optional[tuple]:
             if _validate(text):
                 _log("OK", f"{name} ✓")
                 return text, name
-            snippet = (_normalize(text) or "")[:100].replace("\n", "↵")
-            _log("FAIL", f"{name} — invalid output: {snippet!r}")
+            # Log why validation failed
+            norm = _normalize(text) or ""
+            missing = [s for s in _REQUIRED if s not in norm]
+            if missing:
+                _log("FAIL", f"{name} — missing mandatory sections: {missing}")
+            else:
+                snippet = norm[:100].replace("\n", "↵")
+                _log("FAIL", f"{name} — invalid output: {snippet!r}")
         except Exception as exc:
             _log("FAIL", f"{name} — {type(exc).__name__}: {exc}")
     return None
