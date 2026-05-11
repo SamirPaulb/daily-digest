@@ -3181,9 +3181,19 @@ def main() -> None:
     # ── Replace Markets section with REAL data (never trust AI for numbers) ──
     def _build_real_markets(mkt: dict) -> str:
         """Build the Markets markdown section from actual fetched data."""
+        _CUR = {
+            "Nifty 50": "₹", "Sensex": "₹", "USD/INR": "₹",
+            "S&P 500": "$", "NASDAQ": "$", "Dow Jones": "$",
+            "Nikkei 225": "¥", "FTSE 100": "£", "DAX": "€",
+            "Gold": "$", "Silver": "$", "Brent Crude": "$", "Bitcoin": "$",
+        }
+
         def _r(key: str) -> str:
             v = mkt.get(key, {"price": "[N/A]", "change": "[N/A]"})
-            return f"| {key} | {v['price']} | {v['change']} |"
+            price = v["price"]
+            if price != "[N/A]":
+                price = f'{_CUR.get(key, "")}{price}'
+            return f"| {key} | {price} | {v['change']} |"
 
         def _movers_line(items: list) -> str:
             """Format movers as: TICKER (+X.X%), TICKER (+Y.Y%), ..."""
