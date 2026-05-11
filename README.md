@@ -78,12 +78,12 @@ Six levels of fallback ensure a digest is always generated, even if every API is
 
 | Level | Providers | Strategy |
 |-------|-----------|----------|
-| 1 | Gemini, OpenAI (`gpt-4.1`), OpenRouter (`gpt-oss-120b:free`), Z.AI, DeepSeek, xAI, Claude | Search-capable AI |
-| 1.5 | Direct assembly | No AI — builds from pre-fetched data |
-| 2 | Gemini, OpenAI (`gpt-4.1-mini`), DeepSeek, Z.AI, Groq, xAI, Mistral, OpenRouter (`nemotron-3-super:free`), Fireworks, Moonshot, MiniMax, GitHub Models | Standard AI |
-| 2.5 | Ollama (`qwen2.5:7b` Q4) | Local model on GitHub runner |
-| 3 | Data template | Markets + headlines only, no AI |
-| 4 | Blank template | Always succeeds |
+| 1 | Gemini, OpenAI (`gpt-4.1`), OpenRouter (`gpt-oss-120b:free`), Z.AI, DeepSeek, xAI, Claude | Search-capable AI + pre-fetched context |
+| 2 | Gemini, OpenAI (`gpt-4.1-mini`), DeepSeek, Z.AI, Groq, xAI, Mistral, OpenRouter (`nemotron-3-super:free`), Fireworks, Moonshot, MiniMax, GitHub Models | Standard AI (no search) |
+| 2.5 | Ollama (`qwen2.5:7b` Q4) | Local model on GitHub runner (installed by workflow when cloud APIs fail) |
+| 3 | Direct assembly | No AI — builds directly from pre-fetched news data |
+| 4 | Data template | Markets + headlines only |
+| 5 | Blank template | Always succeeds |
 
 Workflow-level fallbacks: GitHub AI Inference → Vercel AI Gateway → Ollama install.
 

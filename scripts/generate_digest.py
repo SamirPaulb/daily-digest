@@ -12,14 +12,14 @@ FALLBACK LEVELS (tried in order):
   Level 1    AI + pre-fetched context + optional extra search
                (Claude with web_search, OpenAI search-preview, Gemini grounding,
                 OpenRouter Perplexity — each also gets the pre-fetched news data)
-  Level 1.5  Direct assembly — no LLM, pre-fetched data only
-               (builds digest straight from Tavily/Exa/DDG/Mojeek results)
   Level 2    Standard AI + pre-fetched context (no extra search)
                (Claude, OpenAI, Gemini, OpenRouter free model, GitHub Models)
-  Level 2.5  Local Ollama model (gemma2:2b-instruct-q8_0 — distilled from 9B, near-lossless Q8)
+  Level 2.5  Local Ollama model (qwen2.5:7b Q4)
                — installed by the workflow only when all cloud APIs have failed
-  Level 3    Data-only template  (stdlib; same search chain for news sections)
-  Level 4    Blank template      (pure stdlib, zero deps — ALWAYS SUCCEEDS)
+  Level 3    Direct assembly — no LLM, pre-fetched data only
+               (builds digest straight from Tavily/Exa/DDG/Mojeek results)
+  Level 4    Data-only template  (stdlib; same search chain for news sections)
+  Level 5    Blank template      (pure stdlib, zero deps — ALWAYS SUCCEEDS)
 
 MODEL NAMES are read from env vars so you can update them via GitHub
 Variables (Settings → Variables → Actions) without touching this file.
@@ -37,7 +37,7 @@ CONFIGURATION — set as GitHub Variables (not Secrets):
 
 API KEYS — set as GitHub Secrets:
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
-  TAVILY_API_KEY   — tavily.com (used at Level 1.5 and Level 3, news + finance)
+  TAVILY_API_KEY   — tavily.com (used at Level 3 direct assembly and Level 4, news + finance)
   EXA_API_KEY      — exa.ai (fallback when Tavily section returns empty)
   NEWS_API_KEY     — newsapi.org (primary per-section news fallback)
   GNEWS_API_KEY    — gnews.io (secondary per-section news fallback)
@@ -259,6 +259,7 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://moxie.foxnews.com/google-publisher/world.xml",    # Fox News World
         "https://news.yahoo.com/rss/mostviewed",                   # Yahoo News Most Viewed
         "https://www.ft.com/rss/home/international",              # Financial Times International
+        "https://www.reddit.com/r/worldnews.rss",                 # Reddit r/worldnews (community-curated)
     ],
     "india": [
         "https://timesofindia.indiatimes.com/rssfeedsdefault.cms",    # Times of India top stories
@@ -421,6 +422,7 @@ ONLY include if you have web search results confirming it. If unsure, skip the s
 Never hallucinate company names, funding amounts, analyst names, or predictions.
 3. If a section would have fewer than 2 real items, skip it — do not pad with invented content.
 4. Always prefer fewer accurate items over more questionable ones.
+5. Prefer stories from major sources (Reuters, AP, BBC, Bloomberg, TechCrunch, Economic Times) over lesser-known blogs or aggregators.
 
 GLOBAL NEWS (verified headlines):
 {_sec(glob_news, 'global')}
@@ -1926,11 +1928,11 @@ def _build_direct(
     glob_news: list, india_news: list, tech_news: list,
 ) -> str:
     """
-    Level 1.5: assemble a complete digest from pre-fetched data. No LLM, no new API calls.
+    Level 3: assemble a complete digest from pre-fetched data. No LLM, no new API calls.
     Returns empty string if no news data is available at all.
     """
     if not (glob_news or india_news or tech_news):
-        _log("SKIP", "data-direct — no news data available, skipping Level 1.5")
+        _log("SKIP", "data-direct — no news data available, skipping Level 3")
         return ""
 
     def _mrow(key: str) -> str:
@@ -2115,7 +2117,7 @@ def _make_level1(prompt: str) -> list:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Level 1.5 — direct assembly from pre-fetched data, no LLM
+# Level 3 — direct assembly from pre-fetched data, no LLM
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _make_level1_5(
@@ -2296,7 +2298,7 @@ def _make_level2(prompt: str) -> list:
     ]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Level 3 — data-only, no LLM
+# Level 4 — data-only, no LLM
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _data_only(market: dict, hn: list,
@@ -2406,7 +2408,7 @@ summary: "{summary}"
 {tech_bullets}"""
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Level 4 — blank template, zero dependencies, always succeeds
+# Level 5 — blank template, zero dependencies, always succeeds
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _template_only() -> str:
@@ -2702,16 +2704,7 @@ def main() -> None:
         if outcome:
             result, source = outcome
 
-    # ── Level 2.5: direct assembly — no LLM (fallback when ALL AI fails) ──
-    if not result:
-        _log("INFO", "─── Level 2.5: direct assembly (no LLM) ─────────────")
-        outcome = _run(_make_level1_5(
-            market, hn, mkt_commentary, glob_news, india_news, tech_news,
-        ))
-        if outcome:
-            result, source = outcome
-
-    # ── Level 3: Local Ollama model ───────────────────────────────────────
+    # ── Level 2.5: Local Ollama model ───────────────────────────────────────
     # Only active when OLLAMA_MODEL env var is set (by the workflow after it
     # detects all cloud APIs failed and installs Ollama as a fallback).
     # Receives the same rich pre-fetched context — biggest benefit here since
@@ -2747,24 +2740,32 @@ def main() -> None:
             except Exception as exc:
                 _log("FAIL", f"ollama — {type(exc).__name__}: {exc}")
 
-    # ── Level 3: data-only template — reuses pre-fetched news (no new calls) ──
+    # ── Direct assembly — no LLM (fallback when ALL AI fails) ─────────────
     if not result:
-        _log("INFO", "─── Level 3: data-only template ──────────────────────")
+        _log("INFO", "─── Direct assembly (no LLM) ────────────────────────")
+        outcome = _run(_make_level1_5(
+            market, hn, mkt_commentary, glob_news, india_news, tech_news,
+        ))
+        if outcome:
+            result, source = outcome
+
+    # ── Level 4: data-only template — reuses pre-fetched news (no new calls) ──
+    if not result:
+        _log("INFO", "─── Level 4: data-only template ──────────────────────")
         try:
             candidate = _data_only(market, hn, glob_news, india_news, tech_news)
             if _validate(candidate):
                 result, source = candidate, "data-only"
                 _log("OK", "data-only template ✓")
             else:
-                # _validate rejects [verify] markers — Level 3 falls through to Level 4
-                # The workflow Ollama check will trigger on the [DRAFT markers below.
-                _log("WARN", "data-only template contains placeholder markers — falling to Level 4")
+                # _validate rejects [verify] markers — falls through to Level 5
+                _log("WARN", "data-only template contains placeholder markers — falling to Level 5")
         except Exception as exc:
             _log("FAIL", f"data-only failed: {exc}")
 
-    # ── Level 4: blank template — always succeeds ──────────────────────────
+    # ── Level 5: blank template — always succeeds ──────────────────────────
     if not result:
-        _log("INFO", "─── Level 4: blank template ──────────────────────────")
+        _log("INFO", "─── Level 5: blank template ──────────────────────────")
         result = _template_only()
         source = "blank-template"
         _log("OK", "blank template created — edit before publishing")
