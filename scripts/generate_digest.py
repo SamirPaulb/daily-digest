@@ -419,11 +419,13 @@ ACCURACY RULES (CRITICAL):
 1. News sections (Global, India, AI & Tech): use ONLY headlines from the PRE-FETCHED data below. \
 You may rephrase for brevity but NEVER invent a headline or event that isn't in the data.
 2. For sections without pre-fetched data (Startups, Investing, Career, Personal Finance, Learning): \
-ONLY include if you have web search results confirming it. If unsure, skip the section entirely. \
-Never hallucinate company names, funding amounts, analyst names, or predictions.
-3. If a section would have fewer than 2 real items, skip it — do not pad with invented content.
+SKIP THE SECTION ENTIRELY. Do NOT generate these sections unless you have real, verifiable data from your web search. \
+Never invent company names, funding amounts, analyst names, price targets, or predictions. \
+A missing section is always better than a fabricated one.
+3. If a section would have fewer than 2 real, verifiable items, skip it completely.
 4. Always prefer fewer accurate items over more questionable ones.
 5. Prefer stories from major sources (Reuters, AP, BBC, Bloomberg, TechCrunch, Economic Times) over lesser-known blogs or aggregators.
+6. NEVER fabricate numbers (funding amounts, percentage changes, price targets, analyst forecasts). If a number is not in the pre-fetched data or your search results, do not include it.
 
 GLOBAL NEWS (verified headlines):
 {_sec(glob_news, 'global')}
@@ -2943,15 +2945,15 @@ def main() -> None:
 
         india_movers_md = ""
         if india_gainers:
-            india_movers_md += f"\n\nNifty 50 Gainers: {_movers_line(india_gainers)}"
+            india_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>'
         if india_losers:
-            india_movers_md += f"\n\nNifty 50 Losers: {_movers_line(india_losers)}"
+            india_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">Nifty 50 Losers: {_movers_line(india_losers)}</p>'
 
         us_movers_md = ""
         if us_gainers:
-            us_movers_md += f"\n\nS&P 500 Gainers: {_movers_line(us_gainers)}"
+            us_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">S&P 500 Gainers: {_movers_line(us_gainers)}</p>'
         if us_losers:
-            us_movers_md += f"\n\nS&P 500 Losers: {_movers_line(us_losers)}"
+            us_movers_md += f'\n\n<p style="font-size:0.82em;color:#555">S&P 500 Losers: {_movers_line(us_losers)}</p>'
 
         return f"""## Markets
 
