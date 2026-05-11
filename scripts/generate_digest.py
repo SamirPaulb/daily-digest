@@ -506,6 +506,24 @@ def _normalize(text: str) -> str:
     idx = text.find("---")
     if idx > 0:
         text = text[idx:]
+    # Normalize common heading variants to expected names
+    _HEADING_FIXES = {
+        "## World News": "## Global News",
+        "## International News": "## Global News",
+        "## Global": "## Global News",
+        "## Tech": "## AI & Tech",
+        "## Technology": "## AI & Tech",
+        "## AI and Tech": "## AI & Tech",
+        "## AI/Tech": "## AI & Tech",
+        "## Investing": "## Investing & Predictions",
+        "## Markets & Investing": "## Investing & Predictions",
+        "## Market Outlook": "## Investing & Predictions",
+        "## Startups": "## Startups & Funding",
+        "## Career": "## Career & Opportunities",
+        "## Personal Finance & Savings": "## Personal Finance",
+    }
+    for wrong, right in _HEADING_FIXES.items():
+        text = text.replace(wrong, right)
     return text.strip()
 
 
