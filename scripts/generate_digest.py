@@ -262,7 +262,8 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://www.reddit.com/r/worldnews.rss",                 # Reddit r/worldnews (community-curated)
     ],
     "india": [
-        "https://timesofindia.indiatimes.com/rssfeedsdefault.cms",    # Times of India top stories
+        "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms", # Times of India — India News
+        "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",  # Times of India — Top Stories
         "https://www.thehindu.com/feeder/default.rss",                 # The Hindu (main feed)
         "https://www.thehindu.com/feedly/s1/india/feedly.rss",        # The Hindu India section
         "https://economictimes.indiatimes.com/rssfeed/1977021501.cms", # Economic Times
@@ -387,7 +388,7 @@ def _prompt_with_rich_data(
 
     def _sec(items: list, label: str) -> str:
         if items:
-            return "\n".join(f"  - {item}" for item in items[:8])
+            return "\n".join(f"  - {item}" for item in items[:15])
         hint = f"search for today's {label} stories" if search_hint else "use general knowledge"
         return f"  [no pre-fetched data — {hint}]"
 
@@ -1131,6 +1132,30 @@ def _fetch_rss_section(section: str, n: int = 4) -> list:
         if results:
             return results
     return []
+
+
+def _fetch_all_rss_section(section: str, n_per_feed: int = 3) -> list:
+    """
+    Fetch ALL RSS feeds for a section in parallel and combine results.
+    Returns a merged list from every feed that responds — gives AI the
+    richest possible pool to select quality content from.
+    """
+    urls = _RSS_SECTION_FEEDS.get(section, [])
+    if not urls:
+        return []
+    items: list[str] = []
+    with ThreadPoolExecutor(max_workers=min(len(urls), 10)) as pool:
+        futures = {pool.submit(_fetch_rss_headlines, url, n_per_feed): url for url in urls}
+        for future in as_completed(futures, timeout=30):
+            try:
+                result = future.result(timeout=5)
+                if result:
+                    items.extend(result)
+            except Exception:
+                pass
+    if items:
+        _log("DATA", f"  RSS-all [{section}]: {len(items)} items from {len(urls)} feeds")
+    return items
 
 
 def _fetch_ddg_headlines(query: str, n: int = 4) -> list:
@@ -2579,7 +2604,7 @@ def main() -> None:
         """Fetch global news from all available free sources."""
         items: list[str] = []
         fetchers = [
-            ("RSS",          lambda: _fetch_rss_section("global", 6)),
+            ("RSS-all",      lambda: _fetch_all_rss_section("global", 3)),
             ("NewsAPI",      lambda: _fetch_newsapi("global", 6)),
             ("GNews",        lambda: _fetch_gnews("global", 4)),
             ("DDG",          lambda: _fetch_ddg_headlines(f"world breaking news today {DATE_HUMAN}", 5)),
@@ -2605,7 +2630,7 @@ def main() -> None:
         """Fetch India news from all available free sources."""
         items: list[str] = []
         fetchers = [
-            ("RSS",      lambda: _fetch_rss_section("india", 6)),
+            ("RSS-all",  lambda: _fetch_all_rss_section("india", 3)),
             ("NewsAPI",  lambda: _fetch_newsapi("india", 6)),
             ("GNews",    lambda: _fetch_gnews("india", 4)),
             ("DDG",      lambda: _fetch_ddg_headlines(f"India news today {DATE_HUMAN}", 5)),
@@ -2629,7 +2654,7 @@ def main() -> None:
         """Fetch tech/AI news from all available free sources."""
         items: list[str] = []
         fetchers = [
-            ("RSS",      lambda: _fetch_rss_section("tech", 6)),
+            ("RSS-all",  lambda: _fetch_all_rss_section("tech", 3)),
             ("NewsAPI",  lambda: _fetch_newsapi("tech", 6)),
             ("GNews",    lambda: _fetch_gnews("tech", 4)),
             ("DDG",      lambda: _fetch_ddg_headlines(f"AI technology startup news today {DATE_HUMAN}", 5)),
