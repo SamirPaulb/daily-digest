@@ -836,6 +836,68 @@ def _fetch_twelvedata_quote(sym: str) -> Optional[dict]:
     return None
 
 
+def _fetch_tradingview_quote(sym: str) -> Optional[dict]:
+    """
+    Fetch a quote from TradingView scanner API (no auth, no npm required).
+    Uses the undocumented but stable POST /scan endpoint that the TV website uses.
+    Covers all asset classes: indices, crypto, forex, commodities.
+    Ref: https://scanner.tradingview.com/global/scan
+
+    Column semantics (TV scanner):
+      "close"  → current/last price
+      "change" → daily % change as a plain number (e.g., 1.23 = +1.23%)
+                 NOT absolute change — that column is named "change_abs"
+
+    Returns {"price": "...", "change": "..."} or None on error/missing key.
+    """
+    _TV_SYM_MAP: dict[str, str] = {
+        "^GSPC":    "SP:SPX",
+        "^IXIC":    "NASDAQ:COMP",
+        "^DJI":     "DJ:DJI",
+        "^N225":    "TVC:NI225",
+        "^FTSE":    "TVC:UKX",
+        "^GDAXI":   "XETR:DAX",
+        "GC=F":     "COMEX:GC1!",
+        "SI=F":     "COMEX:SI1!",
+        "BZ=F":     "NYMEX:BB1!",
+        "BTC-USD":  "COINBASE:BTCUSD",
+        "USDINR=X": "FX:USDINR",
+        "^NSEI":    "NSE:NIFTY",
+        "^BSESN":   "BSE:SENSEX",
+    }
+    tv_sym = _TV_SYM_MAP.get(sym)
+    if not tv_sym:
+        return None
+    try:
+        payload = json.dumps({
+            "symbols": {"tickers": [tv_sym], "query": {"types": []}},
+            "columns": ["close", "change"],
+        }).encode()
+        req = urllib.request.Request(
+            "https://scanner.tradingview.com/global/scan",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+                "Origin": "https://www.tradingview.com",
+                "Referer": "https://www.tradingview.com/",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        rows = data.get("data") or []
+        if not rows:
+            return None
+        d = rows[0].get("d") or []
+        price = float(d[0]) if len(d) > 0 and d[0] is not None else 0.0
+        chg = float(d[1]) if len(d) > 1 and d[1] is not None else 0.0
+        if price:
+            return {"price": f"{price:,.2f}", "change": f"{chg:+.2f}%"}
+    except Exception as exc:
+        _log("WARN", f"  TradingView quote ({sym}) failed: {exc}")
+    return None
+
+
 def _fetch_alphavantage_quote(sym: str) -> Optional[dict]:
     """
     Fetch a quote from Alpha Vantage (secondary source).
@@ -974,15 +1036,18 @@ def _fetch_market_data() -> dict:
     ]
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
-        # Priority: Finnhub → Alpha Vantage → Yahoo → TwelveData → Massive
+        # Priority: Finnhub → Alpha Vantage → Yahoo → TwelveData → Massive → TradingView
+        # Exception: crypto (-USD) skips Alpha Vantage because it only returns
+        # a real-time exchange rate with hardcoded 0.00% change — not useful.
         q = _fetch_finnhub_quote(sym)
         if q:
             _log("DATA", f"  {label} (Finnhub): {q['price']} ({q['change']})")
             return label, q
-        q = _fetch_alphavantage_quote(sym)
-        if q:
-            _log("DATA", f"  {label} (AlphaVantage): {q['price']} ({q['change']})")
-            return label, q
+        if "-USD" not in sym:
+            q = _fetch_alphavantage_quote(sym)
+            if q:
+                _log("DATA", f"  {label} (AlphaVantage): {q['price']} ({q['change']})")
+                return label, q
         q = _fetch_yahoo_quote(sym)
         if q:
             _log("DATA", f"  {label} (Yahoo): {q['price']} ({q['change']})")
@@ -994,6 +1059,10 @@ def _fetch_market_data() -> dict:
         q = _fetch_massive_quote(sym)
         if q:
             _log("DATA", f"  {label} (Massive): {q['price']} ({q['change']})")
+            return label, q
+        q = _fetch_tradingview_quote(sym)
+        if q:
+            _log("DATA", f"  {label} (TradingView): {q['price']} ({q['change']})")
         else:
             _log("WARN", f"  {label} ({sym}): all sources failed")
         return label, q
@@ -2147,7 +2216,7 @@ def _make_level1(prompt: str) -> list:
 # Level 3 — direct assembly from pre-fetched data, no LLM
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _make_level1_5(
+def _make_level3(
     market: dict, hn: list,
     mkt_commentary: str,
     glob_news: list, india_news: list, tech_news: list,
@@ -2773,7 +2842,7 @@ def main() -> None:
     # ── Direct assembly — no LLM (fallback when ALL AI fails) ─────────────
     if not result:
         _log("INFO", "─── Direct assembly (no LLM) ────────────────────────")
-        outcome = _run(_make_level1_5(
+        outcome = _run(_make_level3(
             market, hn, mkt_commentary, glob_news, india_news, tech_news,
         ))
         if outcome:

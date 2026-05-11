@@ -9,21 +9,23 @@ Automated daily briefing — markets, news, AI, startups, investing, careers. Ge
 ```
 4:30 AM IST daily (GitHub Actions cron, or manual trigger)
     ↓
-Fetch market data — 5-provider fallback:
-  Finnhub → Alpha Vantage → Yahoo Finance → Twelve Data → Massive
+Fetch market data — 6-provider fallback:
+  Finnhub → Alpha Vantage → Yahoo Finance → Twelve Data → Massive → TradingView
     ↓
 Fetch top gainers/losers:
   US:    Yahoo screener (mcap ≥ $10B) → Alpha Vantage
   India: NSE equity-stockIndices (Nifty 50)
     ↓
-Fetch news — 20+ sources in parallel, 60s timeout:
-  Tavily, RSS (25+ feeds), NewsAPI, GNews, DDG, WebSearchAPI,
+Fetch news — 20+ sources in parallel, 90s timeout:
+  Tavily, RSS (30+ feeds), Google News, Reddit, NewsAPI, GNews, DDG, WebSearchAPI,
   NYTimes, Currents, Mediastack, Finnhub, Exa, NewsData,
   WorldNewsAPI, NewsCatcher, Mojeek
     ↓
+AI waits until all fetches complete or timeout
+    ↓
 Deduplicate across all sections
     ↓
-AI generates digest (15-25 items/section → picks best 7-10)
+AI generates digest (15 items/section → picks best 7-10)
     ↓
 Script injects real market numbers (never AI-generated)
     ↓
@@ -39,7 +41,7 @@ Main blog fetches HTML via raw.githubusercontent.com
 ```
 daily-digest/
 ├── scripts/
-│   ├── generate_digest.py    # Main generator (~3200 lines)
+│   ├── generate_digest.py    # Main generator (~3300 lines)
 │   └── requirements.txt      # Python dependencies
 ├── digests/                   # Generated HTML digests (YYYY-MM-DD.html)
 ├── index.html                 # Web viewer with dark mode
@@ -52,12 +54,12 @@ daily-digest/
 
 ## News Sources
 
-ALL sources run in parallel (90s generous timeout). AI waits until every source completes or times out before generating — ensures maximum data richness. The AI receives up to 15 deduplicated items per section and picks the best 7-10, preferring major sources (Reuters, AP, BBC, Bloomberg).
+All sources run in parallel (90s generous timeout). AI waits until every source completes or times out — ensures maximum data richness. AI receives up to 15 deduplicated items per section and picks the best 7-10, preferring major outlets (Reuters, AP, BBC, Bloomberg).
 
 | Source | Type | Sections | Key Required |
 |--------|------|----------|--------------|
 | Tavily | AI search | Global, India, Tech, Finance | Yes |
-| RSS feeds | 30+ feeds fetched in parallel (BBC, Guardian, Bloomberg, Reddit, FT, TOI, TechCrunch, etc.) | Global, India, Tech | No |
+| RSS feeds | 30+ feeds in parallel (BBC, Guardian, Bloomberg, FT, TechCrunch, TOI, etc.) | Global, India, Tech | No |
 | Google News | RSS (top stories + search) | Global, India, Tech | No |
 | Reddit | r/worldnews RSS | Global | No |
 | NewsAPI | Structured news | Global, India, Tech | Yes |
@@ -93,9 +95,13 @@ Workflow-level fallbacks: GitHub AI Inference → Vercel AI Gateway → Ollama i
 
 | Data | Primary | Fallback Chain |
 |------|---------|----------------|
-| Index prices | Finnhub | Alpha Vantage → Yahoo Finance → Twelve Data → Massive |
+| Index / crypto / forex prices | Finnhub | Alpha Vantage → Yahoo Finance → Twelve Data → Massive → TradingView |
 | US movers | Yahoo screener (mcap ≥ $10B) | Alpha Vantage TOP_GAINERS_LOSERS |
 | India movers | NSE equity-stockIndices | Skipped if unavailable (geo-blocked outside India) |
+
+**Notes:**
+- Crypto symbols (e.g. Bitcoin `BTC-USD`) skip Alpha Vantage — it only returns a real-time exchange rate with hardcoded 0.00% change, not a useful daily % change.
+- TradingView fallback uses the public scanner API (`scanner.tradingview.com/global/scan`) — no API key, no npm required.
 
 ## GitHub Models (Free Tier)
 
