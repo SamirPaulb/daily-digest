@@ -352,6 +352,7 @@ SOURCE LINKS (optional — nice-to-have, never break output for this):
 - When present, append a tiny link icon at the END of the bullet using EXACTLY this format: [**&#8599;**](url)
 - Example: - **Headline** — summary text. [**&#8599;**](https://example.com/article)
 - If NO [SRC:...] tag exists for an item, just omit the link — do NOT invent URLs.
+- Never output truncated URLs, ellipses, or "(truncated)" inside links. If the full URL is unavailable, omit the link entirely.
 - This is optional. The digest is valid with or without links. Never hallucinate a URL.
 
 MANDATORY (always include, 7-10 items each):
@@ -550,6 +551,8 @@ def _validate(text: str) -> bool:
     for placeholder in _PLACEHOLDER_PATTERNS:
         if placeholder in text:
             return False
+    if "(truncated)" in text or re.search(r"\]\(https?:\/\/[^\s)]*\.\.\.", text):
+        return False
     # Require at least 2 real headline bullets (- **...**)
     if text.count("- **") < 2:
         return False
@@ -559,6 +562,32 @@ def _validate(text: str) -> bool:
 def _clean(text: str) -> str:
     """Return normalised text guaranteed to end with a single newline."""
     return _normalize(text) + "\n"
+
+
+def _sanitize_inline_links(md: str) -> str:
+    """
+    Remove malformed AI-generated Markdown links before HTML conversion.
+
+    Some model/provider outputs visibly truncate long source URLs, leaving
+    fragments like `[**&#8599;**](https://example... (truncated)` in the final
+    digest. Those render as raw Markdown on the website, so keep the label and
+    drop only the broken link.
+    """
+    if not isinstance(md, str):
+        return ""
+    md = re.sub(
+        r"\[([^\]\n]+)\]\((https?:\/\/[^\s)<]+)\s+\(truncated\)",
+        r"\1",
+        md,
+        flags=re.IGNORECASE,
+    )
+    md = re.sub(
+        r"\[([^\]\n]+)\]\((https?:\/\/[^\s)<]*\.\.\.)\)?",
+        r"\1",
+        md,
+        flags=re.IGNORECASE,
+    )
+    return md
 
 
 # Map source identifiers → human-readable author label for front matter.
@@ -3345,6 +3374,7 @@ def main() -> None:
     # Also ensure ## headings have a blank line before them.
     body_md = re.sub(r"(?m)\n*^-{3,}$\n*", "\n\n---\n\n", body_md)
     body_md = re.sub(r"([^\n])\n(## )", r"\1\n\n\2", body_md)
+    body_md = _sanitize_inline_links(body_md)
 
     # Convert markdown body to HTML
     html_body = md_lib.markdown(
