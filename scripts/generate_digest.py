@@ -112,8 +112,8 @@ CFG = {
     # ── AI Provider Models ────────────────────────────────────────────────
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
-    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4.1"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"),
+    "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "minimaxai/minimax-m3"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "openai/gpt-oss-120b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
@@ -132,7 +132,7 @@ CFG = {
     "GITHUB_MODEL_FALLBACKS":  _env("GITHUB_MODEL_FALLBACKS",  "deepseek/DeepSeek-V3-0324,meta/Llama-4-Scout-17B-16E-Instruct,microsoft/Phi-4-reasoning"),
 
     # ── AI Provider Base URLs ─────────────────────────────────────────────
-    "OPENAI_BASE_URL":         _env("OPENAI_BASE_URL",         "https://api.openai.com/v1"),
+    "OPENAI_BASE_URL":         _env("OPENAI_BASE_URL",         "https://integrate.api.nvidia.com/v1/chat/completions"),
     "OPENROUTER_BASE_URL":     _env("OPENROUTER_BASE_URL",     "https://openrouter.ai/api/v1"),
     "DEEPSEEK_BASE_URL":       _env("DEEPSEEK_BASE_URL",       "https://api.deepseek.com"),
     "XAI_BASE_URL":            _env("XAI_BASE_URL",            "https://api.x.ai/v1"),
