@@ -113,7 +113,7 @@ CFG = {
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "gpt-4.1"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "openai/gpt-oss-120b:free"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
