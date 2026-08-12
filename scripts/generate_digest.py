@@ -3337,9 +3337,9 @@ def main() -> None:
                 _log("TRY", f"ollama ({ollama_model}) ...")
                 body = json.dumps({
                     "model": ollama_model,
-                    "prompt": data_prompt,
+                    "prompt": "/no_think\n" + data_prompt,
                     "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 8192},
+                    "options": {"temperature": 0.1, "num_predict": 8192, "num_ctx": 32768},
                 }).encode()
                 req = urllib.request.Request(
                     "http://localhost:11434/api/generate",
@@ -3447,9 +3447,9 @@ def main() -> None:
                     _log("TRY", f"ollama ({ollama_model}) (relaxed) ...")
                     body = json.dumps({
                         "model": ollama_model,
-                        "prompt": data_prompt,
+                        "prompt": "/no_think\n" + data_prompt,
                         "stream": False,
-                        "options": {"temperature": 0.1, "num_predict": 8192},
+                        "options": {"temperature": 0.1, "num_predict": 8192, "num_ctx": 32768},
                     }).encode()
                     req = urllib.request.Request(
                         "http://localhost:11434/api/generate",
@@ -4105,7 +4105,7 @@ def test_all() -> None:
         )
         body = json.dumps({
             "model": ollama_model,
-            "prompt": full_test_prompt,
+            "prompt": "/no_think\n" + full_test_prompt,
             "stream": False,
             "options": {"temperature": 0.1, "num_predict": 2048},
         }).encode()

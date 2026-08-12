@@ -43,8 +43,8 @@ jobs:
       - name: Cache Ollama models
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: ~/.ollama/models
-          key: ollama-qwen3-8b-v1
+          path: /usr/share/ollama/.ollama/models
+          key: ollama-qwen3-8b-v2
           restore-keys: ollama-
 
       - name: Install dependencies
