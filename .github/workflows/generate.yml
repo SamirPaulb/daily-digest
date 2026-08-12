@@ -121,7 +121,7 @@ jobs:
           GITHUB_TOKEN:             ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ inputs.test_mode }}" = "true" ]; then
-            # Install Ollama for test mode
+            # Install Ollama (two mirror URLs for reliability)
             curl -fsSL https://ollama.com/install.sh | sh || curl -fsSL https://ollama.ai/install.sh | sh
             ollama serve &
             OLLAMA_PID=$!
@@ -129,8 +129,20 @@ jobs:
               curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
               sleep 1
             done
-            ollama pull qwen2.5:7b-instruct-q4_K_M
-            export OLLAMA_MODEL="qwen2.5:7b-instruct-q4_K_M"
+            # Pull model with 3-level fallback:
+            # 1. qwen3:8b from Ollama registry (128K context, ~5GB)
+            # 2. Smaller model from Ollama registry
+            # 3. Direct from HuggingFace GGUF (always available)
+            if ollama pull qwen3:8b; then
+              export OLLAMA_MODEL="qwen3:8b"
+            elif ollama pull qwen2.5:3b-instruct-q4_K_M; then
+              echo "⚠️ qwen3:8b failed, using qwen2.5:3b"
+              export OLLAMA_MODEL="qwen2.5:3b-instruct-q4_K_M"
+            else
+              echo "⚠️ Ollama registry failed, pulling from HuggingFace..."
+              ollama pull hf.co/bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M || ollama pull hf.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF:Q4_K_M || true
+              export OLLAMA_MODEL="hf.co/bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M"
+            fi
             python scripts/generate_digest.py --test
             kill $OLLAMA_PID 2>/dev/null || true
           else
@@ -238,9 +250,9 @@ jobs:
         if: steps.ollama_check.outputs.needed == 'true'
         timeout-minutes: 45
         env:
-          OLLAMA_MODEL: qwen2.5:7b-instruct-q4_K_M
+          OLLAMA_MODEL: qwen3:8b
         run: |
-          # Install Ollama
+          # Install Ollama (two mirror URLs)
           curl -fsSL https://ollama.com/install.sh | sh || curl -fsSL https://ollama.ai/install.sh | sh
           # Start server
           ollama serve &
@@ -248,13 +260,20 @@ jobs:
             curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
             sleep 1
           done
-          # Pull model (Q4_K_M quantized — ~4.4GB, fits in runner RAM)
-          ollama pull $OLLAMA_MODEL
+          # Pull model with 3-level fallback
+          if ollama pull $OLLAMA_MODEL; then
+            echo "✓ Primary model ready: $OLLAMA_MODEL"
+          elif ollama pull qwen2.5:3b-instruct-q4_K_M; then
+            echo "⚠️ Primary failed, using qwen2.5:3b"
+            export OLLAMA_MODEL="qwen2.5:3b-instruct-q4_K_M"
+          else
+            echo "⚠️ Ollama registry down, pulling from HuggingFace..."
+            ollama pull hf.co/bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M || ollama pull hf.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF:Q4_K_M || true
+            export OLLAMA_MODEL="hf.co/bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M"
+          fi
           # Delete placeholder and regenerate
           DATE_ISO=$(TZ='Asia/Kolkata' date '+%Y-%m-%d')
           rm -f "digests/${DATE_ISO}.html"
-          # Set OLLAMA_MODEL env so the Python script uses it at Level 2.5
-          export OLLAMA_MODEL
           python scripts/generate_digest.py
           # Stop Ollama
           pkill ollama || true
@@ -272,4 +291,3 @@ jobs:
             git pull --rebase origin main
             git push
           fi
-

@@ -14,7 +14,7 @@ FALLBACK LEVELS (tried in order):
                 OpenRouter Perplexity — each also gets the pre-fetched news data)
   Level 2    Standard AI + pre-fetched context (no extra search)
                (Claude, OpenAI, Gemini, OpenRouter free model, GitHub Models)
-  Level 2.5  Local Ollama model (qwen2.5:7b Q4)
+  Level 2.5  Local Ollama model (qwen3:8b — 128K context)
                — installed by the workflow only when all cloud APIs have failed
   Level 3    Direct assembly — no LLM, pre-fetched data only
                (builds digest straight from Tavily/Exa/DDG/Mojeek results)
@@ -3549,9 +3549,8 @@ def main() -> None:
             return [], []
 
     def _fetch_india_movers() -> tuple[list, list]:
-        """Fetch Nifty 50 top gainers/losers from NSE. Returns (gainers, losers) or empty if unavailable."""
-        # NSE equity-stockIndices: single call, returns all Nifty 50 with % change
-        # May fail from non-Indian IPs (GitHub Actions) — that's OK, section is optional
+        """Fetch Nifty 50 top gainers/losers. NSE → Yahoo Finance (.NS suffix) fallback."""
+        # Primary: NSE direct (only works from Indian IPs)
         try:
             nse_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -3560,47 +3559,138 @@ def main() -> None:
             }
             url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
             req = urllib.request.Request(url, headers=nse_headers)
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.load(resp)
             stocks = data.get("data", [])
-            # First entry is the index itself, skip it
             stocks = [s for s in stocks if s.get("symbol") != "NIFTY 50"]
-            if len(stocks) < 20:
+            if len(stocks) >= 20:
+                stocks.sort(key=lambda s: float(s.get("pChange") or 0), reverse=True)
+                gainers = [(s["symbol"], f"+{float(s['pChange']):.1f}%") for s in stocks[:5] if float(s.get("pChange") or 0) > 0]
+                losers = [(s["symbol"], f"{float(s['pChange']):.1f}%") for s in stocks[-5:] if float(s.get("pChange") or 0) < 0]
+                if gainers or losers:
+                    _log("DATA", "  India movers (NSE): OK")
+                    return gainers, losers
+        except Exception:
+            pass
+        # Fallback: Yahoo Finance — fetch top Nifty 50 stocks by % change
+        try:
+            _ctx = ssl.create_default_context()
+            _ctx.check_hostname = False
+            _ctx.verify_mode = ssl.CERT_NONE
+            # Use Yahoo screener with Indian exchange filter
+            nifty_syms = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
+                          "HINDUNILVR.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS", "LT.NS",
+                          "KOTAKBANK.NS", "AXISBANK.NS", "BAJFINANCE.NS", "MARUTI.NS", "TITAN.NS",
+                          "SUNPHARMA.NS", "TATAMOTORS.NS", "WIPRO.NS", "HCLTECH.NS", "ADANIENT.NS"]
+            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={','.join(nifty_syms)}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15, context=_ctx) as resp:
+                data = json.load(resp)
+            quotes = data.get("quoteResponse", {}).get("result", [])
+            if quotes:
+                quotes.sort(key=lambda q: float(q.get("regularMarketChangePercent") or 0), reverse=True)
+                gainers = [(q["symbol"].replace(".NS", ""), f"+{abs(q['regularMarketChangePercent']):.1f}%")
+                           for q in quotes[:5] if q.get("regularMarketChangePercent", 0) > 0]
+                losers = [(q["symbol"].replace(".NS", ""), f"{q['regularMarketChangePercent']:.1f}%")
+                          for q in quotes[-5:] if q.get("regularMarketChangePercent", 0) < 0]
+                if gainers or losers:
+                    _log("DATA", "  India movers (Yahoo .NS): OK")
+                    return gainers, losers
+        except Exception as exc:
+            _log("WARN", f"  India movers failed: {exc}")
+        return [], []
+
+    def _fetch_market_movers_yahoo(symbols: list, market_name: str) -> tuple[list, list]:
+        """Fetch top gainers/losers for any market via Yahoo Finance quote API."""
+        try:
+            _ctx = ssl.create_default_context()
+            _ctx.check_hostname = False
+            _ctx.verify_mode = ssl.CERT_NONE
+            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={','.join(symbols)}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"})
+            with urllib.request.urlopen(req, timeout=15, context=_ctx) as resp:
+                data = json.load(resp)
+            quotes = data.get("quoteResponse", {}).get("result", [])
+            if not quotes:
                 return [], []
-            stocks.sort(key=lambda s: float(s.get("pChange") or 0), reverse=True)
-            gainers = []
-            for s in stocks[:5]:
-                sym = s.get("symbol", "")
-                pct = float(s.get("pChange") or 0)
-                if sym and pct > 0:
-                    gainers.append((sym, f"+{pct:.1f}%"))
-            losers = []
-            for s in stocks[-5:]:
-                sym = s.get("symbol", "")
-                pct = float(s.get("pChange") or 0)
-                if sym and pct < 0:
-                    losers.append((sym, f"{pct:.1f}%"))
+            quotes.sort(key=lambda q: float(q.get("regularMarketChangePercent") or 0), reverse=True)
+            # Strip suffix for display (.T, .KS, .SS, .L, .DE)
+            def _clean_sym(s: str) -> str:
+                for sfx in (".T", ".KS", ".SS", ".L", ".DE", ".PA", ".NS"):
+                    s = s.replace(sfx, "")
+                return s
+            gainers = [(_clean_sym(q["symbol"]), f"+{abs(q['regularMarketChangePercent']):.1f}%")
+                       for q in quotes[:3] if q.get("regularMarketChangePercent", 0) > 0]
+            losers = [(_clean_sym(q["symbol"]), f"{q['regularMarketChangePercent']:.1f}%")
+                      for q in quotes[-3:] if q.get("regularMarketChangePercent", 0) < 0]
             if gainers or losers:
-                _log("DATA", "  India movers (NSE): OK")
+                _log("DATA", f"  {market_name} movers (Yahoo): OK")
             return gainers, losers
         except Exception as exc:
-            _log("WARN", f"  India movers (NSE) failed: {exc}")
+            _log("WARN", f"  {market_name} movers failed: {exc}")
             return [], []
 
-    # Fetch movers in parallel
-    us_gainers, us_losers, india_gainers, india_losers = [], [], [], []
+    # Major stocks per market for movers (top ~15 by market cap)
+    _JAPAN_STOCKS = ["7203.T", "6758.T", "9984.T", "8306.T", "6861.T", "9432.T", "6501.T",
+                     "7751.T", "4502.T", "6902.T", "8035.T", "7267.T", "4063.T", "9433.T", "2802.T"]
+    _KOREA_STOCKS = ["005930.KS", "000660.KS", "373220.KS", "005380.KS", "035420.KS",
+                     "051910.KS", "006400.KS", "035720.KS", "003670.KS", "028260.KS"]
+    _UK_STOCKS = ["SHEL.L", "AZN.L", "HSBA.L", "ULVR.L", "BP.L", "RIO.L", "GSK.L",
+                  "BATS.L", "DGE.L", "REL.L", "LSEG.L", "AAL.L"]
+    _GERMANY_STOCKS = ["SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "MBG.DE", "BMW.DE",
+                       "BAS.DE", "MUV2.DE", "BAYN.DE", "ADS.DE"]
+
+    # Fetch ALL movers in parallel — completely independent from market data.
+    # Each market's movers are fetched separately; one failure doesn't affect others.
+    us_gainers, us_losers = [], []
+    india_gainers, india_losers = [], []
+    japan_gainers, japan_losers = [], []
+    korea_gainers, korea_losers = [], []
+    uk_gainers, uk_losers = [], []
+    germany_gainers, germany_losers = [], []
     try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=6) as pool:
             us_fut = pool.submit(_fetch_us_movers)
-            in_fut = pool.submit(_fetch_india_movers)
-            us_gainers, us_losers = us_fut.result()
-            india_gainers, india_losers = in_fut.result()
+            india_fut = pool.submit(_fetch_india_movers)
+            japan_fut = pool.submit(_fetch_market_movers_yahoo, _JAPAN_STOCKS, "Japan")
+            korea_fut = pool.submit(_fetch_market_movers_yahoo, _KOREA_STOCKS, "Korea")
+            uk_fut = pool.submit(_fetch_market_movers_yahoo, _UK_STOCKS, "UK")
+            germany_fut = pool.submit(_fetch_market_movers_yahoo, _GERMANY_STOCKS, "Germany")
+            # Each result() is wrapped individually so one failure doesn't block others
+            try:
+                us_gainers, us_losers = us_fut.result(timeout=20)
+            except Exception:
+                pass
+            try:
+                india_gainers, india_losers = india_fut.result(timeout=20)
+            except Exception:
+                pass
+            try:
+                japan_gainers, japan_losers = japan_fut.result(timeout=20)
+            except Exception:
+                pass
+            try:
+                korea_gainers, korea_losers = korea_fut.result(timeout=20)
+            except Exception:
+                pass
+            try:
+                uk_gainers, uk_losers = uk_fut.result(timeout=20)
+            except Exception:
+                pass
+            try:
+                germany_gainers, germany_losers = germany_fut.result(timeout=20)
+            except Exception:
+                pass
         if us_gainers:
             _log("DATA", f"  US movers: {len(us_gainers)} gainers, {len(us_losers)} losers")
         if india_gainers:
             _log("DATA", f"  India movers: {len(india_gainers)} gainers, {len(india_losers)} losers")
+        if japan_gainers:
+            _log("DATA", f"  Japan movers: {len(japan_gainers)} gainers, {len(japan_losers)} losers")
+        if korea_gainers:
+            _log("DATA", f"  Korea movers: {len(korea_gainers)} gainers, {len(korea_losers)} losers")
     except Exception:
-        pass
+        _log("WARN", "  Movers fetch failed entirely — market data unaffected")
 
     # ── Replace Markets section with REAL data (never trust AI for numbers) ──
     def _build_real_markets(mkt: dict) -> str:
@@ -3671,7 +3761,7 @@ def main() -> None:
 {_r("FTSE 100")}
 
 <details>
-<summary><strong>More Indices & Movers</strong></summary>
+<summary><strong><u>More Indices & Movers</u></strong></summary>
 <table><thead><tr><th>Index</th><th>Price</th><th>Change</th></tr></thead><tbody>
 {_html_row("Hang Seng")}
 {_html_row("KOSPI")}
@@ -3679,14 +3769,16 @@ def main() -> None:
 {_html_row("CAC 40")}
 {_html_row("USD/INR")}
 </tbody></table>
-{f'<p style="font-size:0.85em;margin-top:0.8em"><strong>US (S&P 500)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(us_gainers)}</p>' if us_gainers else ''}
-{f'<p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(us_losers)}</p>' if us_losers else ''}
-{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>India (Nifty 50)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(india_gainers)}</p>' if india_gainers else ''}
-{f'<p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(india_losers)}</p>' if india_losers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.8em"><strong>US (S&P 500)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(us_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(us_losers)}</p>' if us_gainers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>India (Nifty 50)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(india_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(india_losers)}</p>' if india_gainers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>Japan (Nikkei 225)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(japan_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(japan_losers)}</p>' if japan_gainers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>Korea (KOSPI)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(korea_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(korea_losers)}</p>' if korea_gainers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>UK (FTSE 100)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(uk_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(uk_losers)}</p>' if uk_gainers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>Germany (DAX)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(germany_gainers)}</p><p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(germany_losers)}</p>' if germany_gainers else ''}
 </details>
 
 <details>
-<summary><strong>Commodities & Crypto</strong></summary>
+<summary><strong><u>Commodities & Crypto</u></strong></summary>
 <table><thead><tr><th>Asset</th><th>Price</th><th>Change</th></tr></thead><tbody>
 {_html_row("Gold")}
 {_html_row("Silver")}
@@ -3896,11 +3988,13 @@ def test_all() -> None:
     _log("TEST", "=" * 60)
 
     # ── Test market data sources ──────────────────────────────────────────
-    _log("TEST", "\n─── Market Data Sources ───")
+    _log("TEST", "\n─── Market Data Sources (indices) ───")
     for name, fn in [
         ("Finnhub", lambda: _fetch_finnhub_quote("AAPL")),
         ("Alpha Vantage", lambda: _fetch_alphavantage_quote("AAPL")),
         ("Yahoo Finance", lambda: _fetch_yahoo_quote("AAPL")),
+        ("TwelveData", lambda: _fetch_twelvedata_quote("AAPL")),
+        ("TradingView", lambda: _fetch_tradingview_quote("^GSPC")),
         ("NSE (Nifty)", _fetch_nse_nifty),
         ("BSE (Sensex)", _fetch_bse_sensex),
     ]:
@@ -3924,6 +4018,12 @@ def test_all() -> None:
         ("Mediastack", lambda: _fetch_mediastack("global", 2)),
         ("Finnhub News", lambda: _fetch_finnhub_news("global", 2)),
         ("Exa", lambda: _fetch_exa_headlines("world news today", 2)),
+        ("NewsMesh", lambda: _fetch_newsmesh("global", 2)),
+        ("Webz.io", lambda: _fetch_webzio("global", 2)),
+        ("NewsMCP", lambda: _fetch_newsmcp("global", 2)),
+        ("Spaceflight", lambda: _fetch_spaceflight_news(2)),
+        ("NewsData", lambda: _fetch_newsdata("global", 2)),
+        ("WorldNewsAPI", lambda: _fetch_worldnewsapi("global", 2)),
         ("RSS (BBC)", lambda: _fetch_rss_section("global", 2)),
     ]:
         try:
@@ -3976,33 +4076,59 @@ def test_all() -> None:
         except Exception as e:
             _log("FAIL", f"  {name}: {type(e).__name__}: {e}")
 
-    # ── Test Ollama (local model) ─────────────────────────────────────────
+    # ── Test Ollama (local model) — full context test ───────────────────────
     _log("TEST", "\n─── Ollama (Local Model) ───")
-    ollama_model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+    ollama_model = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
     try:
         # Check if Ollama is running
         req = urllib.request.Request("http://localhost:11434/api/tags")
         with urllib.request.urlopen(req, timeout=5) as resp:
-            _log("PASS", f"  Ollama server: running")
-        # Test generation
+            tags_data = json.loads(resp.read())
+            models_available = [m.get("name", "") for m in tags_data.get("models", [])]
+            _log("PASS", f"  Ollama server: running, models: {models_available}")
+
+        # Full-context test: simulate the real production prompt with news data
+        full_test_prompt = (
+            f"You are a daily briefing writer. Today is {DATE_HUMAN}.\n\n"
+            "TOP STORIES (verified headlines):\n"
+            "  - **US inflation eases to 3.4%** — CPI data shows cooling trend.\n"
+            "  - **Gold rallies above $4,400/oz** — Safe-haven demand surges.\n"
+            "  - **Ukraine hits Russian ports** — Novorossiysk infrastructure damaged.\n"
+            "  - **India tax collections surge 23%** — GST revenue at record.\n"
+            "  - **AI startup funding hits record** — $10B raised in Q2 2026.\n\n"
+            "TECH / AI:\n"
+            "  - **Cognition AI valued at $40B** — Agentic coding startup raises funding.\n"
+            "  - **DeepSeek releases V4 Pro** — New model without announcement.\n\n"
+            "Generate a brief 3-section digest with ## Top Stories, ## AI & Tech, ## Markets & Economy. "
+            "Use markdown format with front matter (---). Each section needs 2-3 bullet points. "
+            "Start with ---\\ntitle: ... format."
+        )
         body = json.dumps({
             "model": ollama_model,
-            "prompt": test_prompt,
+            "prompt": full_test_prompt,
             "stream": False,
-            "options": {"num_predict": 256},
+            "options": {"temperature": 0.1, "num_predict": 2048},
         }).encode()
         req = urllib.request.Request(
             "http://localhost:11434/api/generate",
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=300) as resp:
             data = json.loads(resp.read())
         text = data.get("response", "")
-        if text and len(text) > 10:
-            _log("PASS", f"  Ollama ({ollama_model}): {text[:100]}")
+        if text and len(text) > 50:
+            # Check if it followed the format
+            has_frontmatter = "---" in text
+            has_sections = "##" in text
+            has_bullets = "- **" in text
+            _log("PASS", f"  Ollama ({ollama_model}): {len(text)} chars, "
+                 f"frontmatter={'✓' if has_frontmatter else '✗'}, "
+                 f"sections={'✓' if has_sections else '✗'}, "
+                 f"bullets={'✓' if has_bullets else '✗'}")
+            _log("PASS", f"  Preview: {text[:150]}...")
         else:
-            _log("FAIL", f"  Ollama ({ollama_model}): empty response")
+            _log("FAIL", f"  Ollama ({ollama_model}): empty or too short ({len(text)} chars)")
     except urllib.error.URLError:
         _log("SKIP", f"  Ollama: server not running (install with: curl -fsSL https://ollama.com/install.sh | sh)")
     except Exception as e:
