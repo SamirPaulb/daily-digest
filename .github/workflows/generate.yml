@@ -86,6 +86,8 @@ jobs:
           NEWSDATAIO_API_KEY: ${{ secrets.NEWSDATAIO_API_KEY }}
           WORLDNEWSAPI_API_KEY: ${{ secrets.WORLDNEWSAPI_API_KEY }}
           NEWSCATCHERAPI_API_KEY: ${{ secrets.NEWSCATCHERAPI_API_KEY }}
+          NEWSMESH_API_KEY:     ${{ secrets.NEWSMESH_API_KEY }}
+          WEBZ_IO_API_KEY:     ${{ secrets.WEBZ_IO_API_KEY }}
           # Model names (from Variables — update when deprecated, no code change)
           CLAUDE_MODEL:             ${{ vars.CLAUDE_MODEL }}
           CLAUDE_SEARCH_TOOL:       ${{ vars.CLAUDE_SEARCH_TOOL }}
@@ -270,3 +272,4 @@ jobs:
             git pull --rebase origin main
             git push
           fi
+
