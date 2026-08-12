@@ -2438,48 +2438,56 @@ def _make_level1(prompt: str) -> list:
     """
     def _gemini() -> str:
         """Gemini with Google Search grounding — best for real-time news.
-        Auto-discovers the best available flash model via SDK if configured name fails.
+        Auto-discovers available flash models via SDK and tries them until one works.
+        Handles: model deprecated, model unavailable to new users, quota exceeded.
         """
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                               http_options={"timeout": 600000})
 
-        def _resolve_model() -> str:
-            """Return the best available Gemini flash model name."""
-            # Try configured model first
-            configured = CFG["GEMINI_MODEL"]
-            try:
-                # Quick check: list models and see if configured one exists
-                available = []
-                for m in client.models.list():
-                    name = m.name.replace("models/", "") if hasattr(m, "name") else ""
-                    if name:
-                        available.append(name)
-                if configured in available:
-                    return configured
-                # Configured model gone — find best flash model dynamically
-                # Prefer: gemini-*-flash (latest version, highest number)
-                flash_models = sorted(
-                    [n for n in available if "flash" in n and "gemini" in n],
-                    reverse=True,  # Latest version first (lexicographic: 2.5 > 2.0)
-                )
-                if flash_models:
-                    _log("WARN", f"  Gemini: {configured} unavailable, using {flash_models[0]}")
-                    return flash_models[0]
-            except Exception:
-                pass  # List failed — fall through to direct attempts
-            return configured
+        # Build ordered list of models to try
+        models_to_try = [CFG["GEMINI_MODEL"]]
+        try:
+            available = []
+            for m in client.models.list():
+                name = m.name.replace("models/", "") if hasattr(m, "name") else ""
+                if name:
+                    available.append(name)
+            # Add all available flash models sorted by version (latest first)
+            flash_models = sorted(
+                [n for n in available if "flash" in n and "gemini" in n],
+                reverse=True,
+            )
+            for fm in flash_models:
+                if fm not in models_to_try:
+                    models_to_try.append(fm)
+        except Exception:
+            # List API failed — add hardcoded fallbacks
+            for alias in ("gemini-2.5-flash-preview-05-20", "gemini-flash-latest", "gemini-2.0-flash-001"):
+                if alias not in models_to_try:
+                    models_to_try.append(alias)
 
-        model_name = _resolve_model()
-        resp = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            ),
-        )
-        return resp.text or ""
+        # Try each model until one works
+        last_err = None
+        for model_name in models_to_try:
+            try:
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())]
+                    ),
+                )
+                return resp.text or ""
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str:
+                    _log("WARN", f"  Gemini model {model_name} unavailable, trying next...")
+                    continue
+                raise  # Non-model error (network, auth, etc.) — propagate
+        raise last_err  # All models exhausted
 
     def _openai() -> str:
         """OpenAI search-preview model — built-in web search."""
@@ -2653,33 +2661,42 @@ def _make_level2(prompt: str) -> list:
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                               http_options={"timeout": 600000})
 
-        def _resolve_model() -> str:
-            configured = CFG["GEMINI_MODEL"]
-            try:
-                available = []
-                for m in client.models.list():
-                    name = m.name.replace("models/", "") if hasattr(m, "name") else ""
-                    if name:
-                        available.append(name)
-                if configured in available:
-                    return configured
-                flash_models = sorted(
-                    [n for n in available if "flash" in n and "gemini" in n],
-                    reverse=True,
-                )
-                if flash_models:
-                    _log("WARN", f"  Gemini: {configured} unavailable, using {flash_models[0]}")
-                    return flash_models[0]
-            except Exception:
-                pass
-            return configured
+        # Build ordered list of models to try
+        models_to_try = [CFG["GEMINI_MODEL"]]
+        try:
+            available = []
+            for m in client.models.list():
+                name = m.name.replace("models/", "") if hasattr(m, "name") else ""
+                if name:
+                    available.append(name)
+            flash_models = sorted(
+                [n for n in available if "flash" in n and "gemini" in n],
+                reverse=True,
+            )
+            for fm in flash_models:
+                if fm not in models_to_try:
+                    models_to_try.append(fm)
+        except Exception:
+            for alias in ("gemini-2.5-flash-preview-05-20", "gemini-2.0-flash-001"):
+                if alias not in models_to_try:
+                    models_to_try.append(alias)
 
-        model_name = _resolve_model()
-        resp = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-        )
-        return resp.text or ""
+        last_err = None
+        for model_name in models_to_try:
+            try:
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                return resp.text or ""
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str:
+                    _log("WARN", f"  Gemini model {model_name} unavailable, trying next...")
+                    continue
+                raise
+        raise last_err
 
     def _openrouter_data() -> str:
         return _openai_compatible_call(
