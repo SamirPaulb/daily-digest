@@ -113,7 +113,7 @@ CFG = {
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.5-flash"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "minimaxai/minimax-m3"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/sonar-reasoning-pro:free"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
@@ -121,7 +121,7 @@ CFG = {
 
     # Level 2 (standard, ranked by quality — same models, no search):
     "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4.1-mini"),
-    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "meta-llama/llama-4-maverick:free"),
+    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "nvidia/nemotron-3-super:free"),
     "GROQ_MODEL":              _env("GROQ_MODEL",              "llama-3.3-70b-versatile"),
     "MISTRAL_MODEL":           _env("MISTRAL_MODEL",           "mistral-small-latest"),
     "FIREWORKS_MODEL":         _env("FIREWORKS_MODEL",          "accounts/fireworks/models/deepseek-v3p1"),
@@ -3671,7 +3671,7 @@ def main() -> None:
 {_r("FTSE 100")}
 
 <details>
-<summary>More Indices & Movers</summary>
+<summary><strong>More Indices & Movers</strong></summary>
 <table><thead><tr><th>Index</th><th>Price</th><th>Change</th></tr></thead><tbody>
 {_html_row("Hang Seng")}
 {_html_row("KOSPI")}
@@ -3679,14 +3679,14 @@ def main() -> None:
 {_html_row("CAC 40")}
 {_html_row("USD/INR")}
 </tbody></table>
-{f'<p style="font-size:0.82em;opacity:0.7;margin-top:0.5em">S&P 500 Top Gainers: {_movers_line(us_gainers)}</p>' if us_gainers else ''}
-{f'<p style="font-size:0.82em;opacity:0.7">S&P 500 Top Losers: {_movers_line(us_losers)}</p>' if us_losers else ''}
-{f'<p style="font-size:0.82em;opacity:0.7">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>' if india_gainers else ''}
-{f'<p style="font-size:0.82em;opacity:0.7">Nifty 50 Losers: {_movers_line(india_losers)}</p>' if india_losers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.8em"><strong>US (S&P 500)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(us_gainers)}</p>' if us_gainers else ''}
+{f'<p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(us_losers)}</p>' if us_losers else ''}
+{f'<p style="font-size:0.85em;margin-top:0.5em"><strong>India (Nifty 50)</strong></p><p style="font-size:0.82em;opacity:0.8">Gainers: {_movers_line(india_gainers)}</p>' if india_gainers else ''}
+{f'<p style="font-size:0.82em;opacity:0.8">Losers: {_movers_line(india_losers)}</p>' if india_losers else ''}
 </details>
 
 <details>
-<summary>Commodities & Crypto</summary>
+<summary><strong>Commodities & Crypto</strong></summary>
 <table><thead><tr><th>Asset</th><th>Price</th><th>Change</th></tr></thead><tbody>
 {_html_row("Gold")}
 {_html_row("Silver")}
