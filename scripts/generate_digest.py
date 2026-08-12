@@ -3339,14 +3339,14 @@ def main() -> None:
                     "model": ollama_model,
                     "prompt": data_prompt,
                     "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 4096},
+                    "options": {"temperature": 0.1, "num_predict": 8192},
                 }).encode()
                 req = urllib.request.Request(
                     "http://localhost:11434/api/generate",
                     data=body,
                     headers={"Content-Type": "application/json"},
                 )
-                with urllib.request.urlopen(req, timeout=600) as resp:
+                with urllib.request.urlopen(req, timeout=3600) as resp:
                     data = json.loads(resp.read())
                 text = data.get("response", "")
                 if _validate(text):
@@ -3449,7 +3449,7 @@ def main() -> None:
                         "model": ollama_model,
                         "prompt": data_prompt,
                         "stream": False,
-                        "options": {"temperature": 0.1, "num_predict": 4096},
+                        "options": {"temperature": 0.1, "num_predict": 8192},
                     }).encode()
                     req = urllib.request.Request(
                         "http://localhost:11434/api/generate",
@@ -4114,7 +4114,7 @@ def test_all() -> None:
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=1800) as resp:
             data = json.loads(resp.read())
         text = data.get("response", "")
         if text and len(text) > 50:

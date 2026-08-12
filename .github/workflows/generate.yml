@@ -21,27 +21,37 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.x'
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cache/pip
           key: digest-pip-${{ hashFiles('scripts/requirements.txt') }}
           restore-keys: digest-pip-
 
+      - name: Cache Ollama models
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen3-8b-v1
+          restore-keys: ollama-
+
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: |
+          pip install -r scripts/requirements.txt
+          # Verify pip packages are working (not corrupted cache)
+          python -c "import feedparser, markdown, json; print('pip cache OK')" || pip install --force-reinstall -r scripts/requirements.txt
 
       - name: Remove existing digest for manual re-run
         if: github.event_name == 'workflow_dispatch'
@@ -56,7 +66,7 @@ jobs:
           fi
 
       - name: Generate digest
-        timeout-minutes: 90
+        timeout-minutes: 240
         env:
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
@@ -129,11 +139,19 @@ jobs:
               curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
               sleep 1
             done
-            # Pull model with 3-level fallback:
-            # 1. qwen3:8b from Ollama registry (128K context, ~5GB)
-            # 2. Smaller model from Ollama registry
-            # 3. Direct from HuggingFace GGUF (always available)
-            if ollama pull qwen3:8b; then
+            # Check if model is already cached and verify it works
+            if ollama list 2>/dev/null | grep -q "qwen3:8b"; then
+              echo "Found qwen3:8b in cache — verifying integrity..."
+              VERIFY=$(curl -sf http://localhost:11434/api/generate -d '{"model":"qwen3:8b","prompt":"hi","stream":false,"options":{"num_predict":5}}' 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('response','')[:20])" 2>/dev/null || echo "")
+              if [ -n "$VERIFY" ]; then
+                echo "✓ Cache verified OK: $VERIFY"
+                export OLLAMA_MODEL="qwen3:8b"
+              else
+                echo "⚠️ Cached model corrupted — re-downloading..."
+                ollama rm qwen3:8b 2>/dev/null || true
+                ollama pull qwen3:8b && export OLLAMA_MODEL="qwen3:8b"
+              fi
+            elif ollama pull qwen3:8b; then
               export OLLAMA_MODEL="qwen3:8b"
             elif ollama pull qwen2.5:3b-instruct-q4_K_M; then
               echo "⚠️ qwen3:8b failed, using qwen2.5:3b"
@@ -171,7 +189,7 @@ jobs:
         if: steps.ai_fallback_check.outputs.needed == 'true'
         id: github_ai
         continue-on-error: true
-        uses: actions/ai-inference@v1
+        uses: actions/ai-inference@b81b2afb8390ee6839b494a404766bef6493c7d9
         with:
           model: 'openai/gpt-4o'
           max-completion-tokens: '2048'
@@ -183,7 +201,7 @@ jobs:
         if: steps.ai_fallback_check.outputs.needed == 'true' && steps.github_ai.outcome != 'success'
         id: vercel_ai
         continue-on-error: true
-        uses: vercel/ai-action@v2
+        uses: vercel/ai-action@bd265252c9d1d8295ceda28dadb56ad9321c8ccc
         with:
           model: 'deepseek/deepseek-v4-flash'
           api-key: ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}
@@ -248,7 +266,7 @@ jobs:
 
       - name: Install Ollama and regenerate with local model
         if: steps.ollama_check.outputs.needed == 'true'
-        timeout-minutes: 45
+        timeout-minutes: 120
         env:
           OLLAMA_MODEL: qwen3:8b
         run: |
@@ -260,8 +278,18 @@ jobs:
             curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break
             sleep 1
           done
-          # Pull model with 3-level fallback
-          if ollama pull $OLLAMA_MODEL; then
+          # Check cache first, verify integrity, then pull with 3-level fallback
+          if ollama list 2>/dev/null | grep -q "qwen3:8b"; then
+            echo "Found qwen3:8b in cache — verifying..."
+            VERIFY=$(curl -sf http://localhost:11434/api/generate -d '{"model":"qwen3:8b","prompt":"hi","stream":false,"options":{"num_predict":5}}' 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('response','')[:20])" 2>/dev/null || echo "")
+            if [ -n "$VERIFY" ]; then
+              echo "✓ Cache verified OK"
+            else
+              echo "⚠️ Cached model corrupted — re-downloading..."
+              ollama rm qwen3:8b 2>/dev/null || true
+              ollama pull $OLLAMA_MODEL || true
+            fi
+          elif ollama pull $OLLAMA_MODEL; then
             echo "✓ Primary model ready: $OLLAMA_MODEL"
           elif ollama pull qwen2.5:3b-instruct-q4_K_M; then
             echo "⚠️ Primary failed, using qwen2.5:3b"
