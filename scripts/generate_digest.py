@@ -29,9 +29,9 @@ CONFIGURATION — set as GitHub Variables (not Secrets):
   CLAUDE_SEARCH_TOOL       default: web_search_20250305
   OPENAI_SEARCH_MODEL      default: gpt-4o-mini-search-preview
   OPENAI_MODEL             default: gpt-4o-mini
-  GEMINI_MODEL             default: gemini-2.0-flash
+  GEMINI_MODEL             default: gemini-2.5-flash
   OPENROUTER_SEARCH_MODEL  default: perplexity/llama-3.1-sonar-small-128k-online
-  OPENROUTER_FREE_MODEL    default: google/gemini-2.0-flash-exp:free
+  OPENROUTER_FREE_MODEL    default: nvidia/nemotron-3-super:free
   GITHUB_MODEL             default: openai/gpt-4.1-mini  (models.github.ai)
   GITHUB_MODEL_FALLBACKS   default: deepseek/DeepSeek-V3-0324,meta/Llama-4-Scout-17B-16E-Instruct,microsoft/Phi-4-reasoning
 
@@ -111,7 +111,7 @@ def _env(key: str, default: str) -> str:
 CFG = {
     # ── AI Provider Models ────────────────────────────────────────────────
     # Level 1 (search-capable, ranked by quality):
-    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.0-flash"),
+    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.5-flash"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "minimaxai/minimax-m3"),
     "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "openai/gpt-oss-120b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
@@ -246,37 +246,33 @@ _JUNK_TITLE_FRAGMENTS = (
 _RSS_SECTION_FEEDS: dict[str, list[str]] = {
     "global": [
         "https://feeds.bbci.co.uk/news/world/rss.xml",           # BBC World (stable since ~2000)
-        "https://feeds.reuters.com/reuters/worldNews",            # Reuters World
-        "https://feeds.reuters.com/reuters/topNews",              # Reuters Top
+        "https://feeds.bbci.co.uk/news/rss.xml",                 # BBC Top Stories
         "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",  # NYT Top Stories
         "https://www.theguardian.com/world/rss",                  # The Guardian World (free)
         "https://feeds.washingtonpost.com/rss/world",             # Washington Post World
         "https://feeds.bloomberg.com/markets/news.rss",           # Bloomberg Markets
         "https://feeds.bloomberg.com/politics/news.rss",          # Bloomberg Politics
         "https://www.cnbc.com/id/100003114/device/rss/rss.html", # CNBC Top News
-        "https://www.aljazeera.com/xml/rss/all.xml",               # Al Jazeera (global perspective)
-        "https://feeds.washingtonpost.com/rss/world",              # Washington Post World
-        "https://moxie.foxnews.com/google-publisher/world.xml",    # Fox News World
-        "https://news.yahoo.com/rss/mostviewed",                   # Yahoo News Most Viewed
-        "https://www.ft.com/rss/home/international",              # Financial Times International
-        "https://www.reddit.com/r/worldnews.rss",                 # Reddit r/worldnews (community-curated)
+        "https://www.aljazeera.com/xml/rss/all.xml",             # Al Jazeera (global perspective)
+        "https://moxie.foxnews.com/google-publisher/world.xml",  # Fox News World
+        "https://news.yahoo.com/rss/mostviewed",                 # Yahoo News Most Viewed
+        "https://www.ft.com/rss/home/international",             # Financial Times International
+        "https://www.reddit.com/r/worldnews.rss",                # Reddit r/worldnews (community-curated)
+        "https://rss.app/feeds/v1.1/dYaVbGkxCZhIRqEL.xml",      # AP News (via rss.app proxy)
+        "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", # Google News US Top Stories
     ],
     "india": [
         "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms", # Times of India — India News
         "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",  # Times of India — Top Stories
         "https://www.thehindu.com/feeder/default.rss",                 # The Hindu (main feed)
-        "https://www.thehindu.com/feedly/s1/india/feedly.rss",        # The Hindu India section
-        "https://economictimes.indiatimes.com/rssfeed/1977021501.cms", # Economic Times
         "https://feeds.feedburner.com/ndtvnews-top-stories",           # NDTV Top Stories
         "https://feeds.feedburner.com/ndtvnews-india-news",            # NDTV India News
         "https://feeds.feedburner.com/ndtvnews-trending-news",         # NDTV Trending
         "https://feeds.feedburner.com/ndtvprofit-latest",              # NDTV Profit
-        "https://feeds.feedburner.com/ndtvnews-indians-abroad",        # NDTV Indians Abroad
-        "https://www.business-standard.com/rss/latest.rss",            # Business Standard Latest
-        "https://www.business-standard.com/rss/markets-106.rss",       # Business Standard Markets
-        "https://www.business-standard.com/rss/home_page_top_stories.rss", # Business Standard Top
         "https://www.livemint.com/rss/news",                           # Livemint
-        "https://www.moneycontrol.com/rss/lateststories.xml",          # MoneyControl
+        "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",      # Google News India Top
+        "https://news.google.com/rss/search?q=India+economy+business&hl=en-IN&gl=IN&ceid=IN:en",  # Google News India Business
+        "https://feeds.feedburner.com/ndtvnews-indians-abroad",        # NDTV Indians Abroad
     ],
     "tech": [
         "https://feeds.bloomberg.com/technology/news.rss",        # Bloomberg Technology
@@ -286,26 +282,31 @@ _RSS_SECTION_FEEDS: dict[str, list[str]] = {
         "https://www.wired.com/feed/rss",                         # Wired
         "https://www.technologyreview.com/feed/",                 # MIT Technology Review
         "https://www.forbes.com/innovation/feed",                 # Forbes Innovation
+        "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en",  # Google News Technology topic
+        "https://feeds.bbci.co.uk/news/technology/rss.xml",       # BBC Technology
     ],
     "startups": [
         "https://techcrunch.com/category/venture/feed/",          # TechCrunch Venture/Funding
         "https://news.crunchbase.com/feed/",                      # Crunchbase News
         "https://feeds.feedburner.com/venturebeat/SZYF",          # VentureBeat
         "https://news.ycombinator.com/rss",                       # Hacker News (startups/tech)
+        "https://news.google.com/rss/search?q=startup+funding+round+acquisition&hl=en&gl=US&ceid=US:en",  # Google News Startups
     ],
     "investing": [
         "https://feeds.bloomberg.com/markets/news.rss",           # Bloomberg Markets
         "https://www.cnbc.com/id/15839135/device/rss/rss.html",  # CNBC Investing
-        "https://feeds.feedburner.com/zaboravik/marketwatch",     # MarketWatch
         "https://www.ft.com/rss/home/international",              # FT International
+        "https://feeds.bbci.co.uk/news/business/rss.xml",        # BBC Business
+        "https://news.google.com/rss/search?q=stock+market+investing+analyst&hl=en&gl=US&ceid=US:en",  # Google News Investing
     ],
     "career": [
-        "https://hbr.org/resources/xml/rss/career.xml",           # HBR Career
-        "https://www.forbes.com/leadership/feed",                 # Forbes Leadership
+        "https://feeds.bbci.co.uk/news/business/rss.xml",        # BBC Business (career/jobs overlap)
+        "https://news.google.com/rss/search?q=tech+hiring+layoffs+remote+jobs&hl=en&gl=US&ceid=US:en",  # Google News Jobs
     ],
     "personal_finance": [
         "https://www.cnbc.com/id/10001054/device/rss/rss.html",  # CNBC Personal Finance
         "https://feeds.feedburner.com/ndtvprofit-latest",          # NDTV Profit
+        "https://news.google.com/rss/search?q=personal+finance+savings+interest+rate&hl=en-IN&gl=IN&ceid=IN:en",  # Google News PF
     ],
 }
 
@@ -334,7 +335,7 @@ STRUCTURE RULES:
 2. Include 5-7 sections (## heading + bullet points) — NO Markets section
 3. Sections separated by --- (horizontal rule)
 4. Each MANDATORY section: 7-10 bullet points. Optional sections: 3-5 bullet points. Format: - **Bold headline** — 1-2 sentence summary explaining what happened and why it matters.
-5. ## Global News, ## India, ## AI & Tech, and ## Investing & Predictions are MANDATORY (7-10 items each). Optional sections (Startups, Career, Personal Finance, Learning, Insight) need only 3-5 items.
+5. ## Top Stories, ## AI & Tech, and ## Markets & Economy are MANDATORY (7-10 items each). Optional sections need only 3-5 items.
 6. ALWAYS include optional sections if pre-fetched data is available — do NOT skip them. Only skip if the data says "[no pre-fetched data]".
 7. Do NOT include a ## Further Reading section (it is appended automatically by the script)
 8. If you do NOT have enough context or data for a story, SKIP it entirely. Never fabricate, guess, or generate vague filler content. It is better to have 5 strong items than 10 weak ones.
@@ -343,8 +344,8 @@ SUMMARY RULES (CRITICAL — applies to ALL sections):
 - Every bullet MUST have a 1-2 sentence summary after the — dash.
 - The summary must be informative enough that the reader fully understands the story WITHOUT clicking any link.
 - Don't just restate the headline — add context (who, what, why), numbers, impact, or what changed.
-- BAD: "- **India Fertilizer Crisis** — Reports say there is a crisis in the sector."
-- GOOD: "- **India Fertilizer Crisis** — India imports 90% of its potash; BusinessLine reports the government is fast-tracking 6 domestic production plants under Make in India to reduce dependence on Russia and Belarus."
+- BAD: "- **Fertilizer Supply Crisis** — Reports say there is a crisis in the sector."
+- GOOD: "- **Global Potash Supply Crunch** — Potash prices surged 15% as the world's largest exporters (Russia, Belarus) face expanding sanctions; India and Brazil are fast-tracking domestic production to reduce import dependence."
 - NEVER write "accessed via search", "source: X", or mention how you found the information. Just state the facts.
 
 SOURCE LINKS (optional — nice-to-have, never break output for this):
@@ -356,10 +357,9 @@ SOURCE LINKS (optional — nice-to-have, never break output for this):
 - This is optional. The digest is valid with or without links. Never hallucinate a URL.
 
 MANDATORY (always include, 7-10 items each):
-- ## Global News — geopolitics, world events, breaking news
-- ## India — Indian politics, economy, business, sports
-- ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news
-- ## Investing & Predictions — analyst calls, bank forecasts, stock/commodity outlook
+- ## Top Stories — the biggest news today: geopolitics, world events, breaking news across all regions. Include stories from different parts of the world (Americas, Europe, Asia, Middle East). Mix in South Asian/Indian stories naturally alongside others.
+- ## AI & Tech — AI breakthroughs, product launches, tech policy, developer news, open source
+- ## Markets & Economy — analyst calls, bank forecasts, stock/commodity outlook, economic policy, trade developments
 
 ALSO INCLUDE (3-5 items each — you MUST include these if pre-fetched data is available below):
 - ## Startups & Funding — funding rounds, acquisitions, new startups, sector trends
@@ -367,12 +367,12 @@ ALSO INCLUDE (3-5 items each — you MUST include these if pre-fetched data is a
 - ## Personal Finance — savings tips, rate changes, tax, insurance, budgeting
 
 OPTIONAL (include if space allows):
-- ## Learning & Growth — one skill/course/book/resource worth exploring today
+- ## Science & Health — research breakthroughs, public health, climate, space
 - ## Insight of the Day — one powerful tweet, quote, or non-obvious observation
 
 SKIP RULE: If you lack sufficient data or context for ANY section (including optional ones), skip it entirely rather than padding with vague or invented content. Quality over quantity.
 
-SECTION NAMES: ONLY use section names from the lists above (## Global News, ## India, ## AI & Tech, etc.). Do NOT invent new section names like "Developer Community Highlights" or "Developer News". Do NOT repeat the same stories in multiple sections.
+SECTION NAMES: ONLY use section names from the lists above (## Top Stories, ## AI & Tech, etc.). Do NOT invent new section names. Do NOT repeat the same stories in multiple sections. Do NOT create geography-specific sections (no "## India", "## US", "## Europe" etc.).
 
 FORMAT:
 
@@ -431,11 +431,13 @@ def _prompt_with_rich_data(
         "If a section has no pre-fetched data, SKIP it rather than guessing."
     )
 
+    # Merge global + India news into one pool for Top Stories
+    all_news = glob_news + india_news
+
     return f"""\
-You are a smart personal daily briefing writer. Your reader is a software engineer \
-based in India who actively invests globally (Indian mutual funds, US stocks, UCITS, \
-global equities), follows AI/startups/tech, and wants to stay informed about career \
-opportunities, market moves, and emerging sectors without missing anything important.
+You are a daily briefing writer for a global audience of tech-savvy professionals and \
+investors. The reader follows AI/startups/tech, invests globally, and wants to stay \
+informed about the biggest stories worldwide without missing anything important.
 Today is {DATE_HUMAN}.
 
 NOTE: The Markets section (prices, indices) is handled separately by the script — \
@@ -449,24 +451,22 @@ Never invent company names, funding amounts, analyst names, price targets, or pr
 A missing section is always better than a fabricated one.
 3. If a section would have fewer than 2 real, verifiable items, skip it completely.
 4. Always prefer fewer accurate items over more questionable ones.
-5. Prefer stories from major sources (Reuters, AP, BBC, Bloomberg, TechCrunch, Economic Times) over lesser-known blogs or aggregators.
+5. Prefer stories from major sources (Reuters, AP, BBC, Bloomberg, TechCrunch, ET) over lesser-known blogs or aggregators.
 6. NEVER fabricate numbers (funding amounts, percentage changes, price targets, analyst forecasts). If a number is not in the pre-fetched data or your search results, do not include it.
 7. NEVER pad sections with motivational quotes, "Quote of the day", generic tips, or filler content. Every bullet must be a real, dated news item from the pre-fetched data.
+8. DO NOT create geography-specific sections. All regions (US, Europe, Asia, India, Middle East) should be mixed naturally within topic-based sections.
 
-GLOBAL NEWS (verified headlines):
-{_sec(glob_news, 'global')}
-
-INDIA NEWS (verified headlines):
-{_sec(india_news, 'India')}
+TOP STORIES — world news from all regions (verified headlines):
+{_sec(all_news, 'world news')}
 
 TECH / AI (verified headlines):
 {_sec(tech_combined, 'tech/AI')}
 
+MARKETS & ECONOMY (verified headlines):
+{_sec(investing_news or [], 'markets/economy')}
+
 STARTUPS & FUNDING (verified headlines):
 {_sec(startups_news or [], 'startups/funding')}
-
-INVESTING & PREDICTIONS (verified headlines):
-{_sec(investing_news or [], 'investing/markets')}
 
 CAREER & OPPORTUNITIES (verified headlines):
 {_sec(career_news or [], 'career/jobs')}
@@ -483,7 +483,7 @@ HACKER NEWS (developer community — real titles):
 # Output normalisation and validation
 # ──────────────────────────────────────────────────────────────────────────────
 
-_REQUIRED = ["## Global News", "## India", "## AI & Tech", "## Investing & Predictions"]  # Mandatory in AI output
+_REQUIRED = ["## Top Stories", "## AI & Tech", "## Markets & Economy"]  # Mandatory in AI output
 
 
 def _normalize(text: str) -> str:
@@ -511,16 +511,21 @@ def _normalize(text: str) -> str:
     # Normalize common heading variants to expected names
     # Match with \n to avoid partial matches (e.g. "## Investing" inside "## Investing & Predictions")
     _HEADING_FIXES = {
-        "## World News\n": "## Global News\n",
-        "## International News\n": "## Global News\n",
-        "## Global\n": "## Global News\n",
+        "## World News\n": "## Top Stories\n",
+        "## International News\n": "## Top Stories\n",
+        "## Global\n": "## Top Stories\n",
+        "## Global News\n": "## Top Stories\n",
+        "## Headlines\n": "## Top Stories\n",
+        "## India\n": "## Top Stories\n",
         "## Tech\n": "## AI & Tech\n",
         "## Technology\n": "## AI & Tech\n",
         "## AI and Tech\n": "## AI & Tech\n",
         "## AI/Tech\n": "## AI & Tech\n",
-        "## Investing\n": "## Investing & Predictions\n",
-        "## Markets & Investing\n": "## Investing & Predictions\n",
-        "## Market Outlook\n": "## Investing & Predictions\n",
+        "## Investing\n": "## Markets & Economy\n",
+        "## Investing & Predictions\n": "## Markets & Economy\n",
+        "## Markets & Investing\n": "## Markets & Economy\n",
+        "## Market Outlook\n": "## Markets & Economy\n",
+        "## Economy\n": "## Markets & Economy\n",
         "## Startups\n": "## Startups & Funding\n",
         "## Career\n": "## Career & Opportunities\n",
         "## Personal Finance & Savings\n": "## Personal Finance\n",
@@ -568,24 +573,52 @@ def _sanitize_inline_links(md: str) -> str:
     """
     Remove malformed AI-generated Markdown links before HTML conversion.
 
-    Some model/provider outputs visibly truncate long source URLs, leaving
-    fragments like `[**&#8599;**](https://example... (truncated)` in the final
-    digest. Those render as raw Markdown on the website, so keep the label and
-    drop only the broken link.
+    Fixes:
+    1. Truncated URLs (ending with "..." or "(truncated)")
+    2. URLs with unescaped parentheses that break Markdown link syntax
+    3. Excessively long URLs (>300 chars) that overflow containers
+    4. URLs missing the closing parenthesis
     """
     if not isinstance(md, str):
         return ""
+    # Remove links with "(truncated)" suffix
     md = re.sub(
         r"\[([^\]\n]+)\]\((https?:\/\/[^\s)<]+)\s+\(truncated\)",
         r"\1",
         md,
         flags=re.IGNORECASE,
     )
+    # Remove links ending with "..."
     md = re.sub(
         r"\[([^\]\n]+)\]\((https?:\/\/[^\s)<]*\.\.\.)\)?",
         r"\1",
         md,
         flags=re.IGNORECASE,
+    )
+    # Remove links with excessively long URLs (>300 chars) — they overflow containers
+    md = re.sub(
+        r"\[([^\]\n]+)\]\((https?:\/\/[^\s)]{300,})\)",
+        r"\1",
+        md,
+    )
+    # Fix unclosed markdown links (missing closing paren) — keeps the label text
+    md = re.sub(
+        r"\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)$",
+        r"\1",
+        md,
+        flags=re.MULTILINE,
+    )
+    # Remove links where URL contains unescaped nested parentheses
+    # e.g. [text](https://example.com/path(1)/page) — breaks Markdown parsers
+    def _fix_paren_urls(m: re.Match) -> str:
+        label, url = m.group(1), m.group(2)
+        if "(" in url:
+            return label  # Drop the link, keep label
+        return m.group(0)  # Keep intact
+    md = re.sub(
+        r"\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)",
+        _fix_paren_urls,
+        md,
     )
     return md
 
@@ -1106,18 +1139,22 @@ def _fetch_market_data() -> dict:
             _log("DATA", f"  Sensex (fallback): {q_sensex['price']} ({q_sensex['change']})")
 
     # ── Global indices + commodities + crypto (parallel) ────────────────────
+    # Top 5 economies by stock market cap: US, China, Japan, UK, India (India shown 2nd)
     _GLOBAL_SYMBOLS: list[tuple[str, str]] = [
-        ("S&P 500",    "^GSPC"),
-        ("NASDAQ",     "^IXIC"),
-        ("Dow Jones",  "^DJI"),
-        ("Nikkei 225", "^N225"),
-        ("FTSE 100",   "^FTSE"),
-        ("DAX",        "^GDAXI"),
-        ("Gold",       "GC=F"),
-        ("Silver",     "SI=F"),
-        ("Brent Crude", "BZ=F"),
-        ("Bitcoin",    "BTC-USD"),
-        ("USD/INR",    "USDINR=X"),
+        ("S&P 500",       "^GSPC"),
+        ("NASDAQ",        "^IXIC"),
+        ("Dow Jones",     "^DJI"),
+        ("Nikkei 225",    "^N225"),
+        ("FTSE 100",      "^FTSE"),
+        ("DAX",           "^GDAXI"),
+        ("Shanghai",      "000001.SS"),
+        ("Hang Seng",     "^HSI"),
+        ("CAC 40",        "^FCHI"),
+        ("Gold",          "GC=F"),
+        ("Silver",        "SI=F"),
+        ("Brent Crude",   "BZ=F"),
+        ("Bitcoin",       "BTC-USD"),
+        ("USD/INR",       "USDINR=X"),
     ]
 
     def _fetch_one(label: str, sym: str) -> tuple[str, Optional[dict]]:
@@ -1160,12 +1197,12 @@ def _fetch_market_data() -> dict:
             label, q = fut.result()
             result[label] = q or _NA
 
-    # Preserve display order
+    # Preserve display order: US → India → Other top economies → Commodities → Crypto
     ordered: dict = {}
     for key in [
-        "Nifty 50", "Sensex", "USD/INR",
         "S&P 500", "NASDAQ", "Dow Jones",
-        "Nikkei 225", "FTSE 100", "DAX",
+        "Nifty 50", "Sensex", "USD/INR",
+        "Nikkei 225", "Shanghai", "Hang Seng", "FTSE 100", "DAX", "CAC 40",
         "Gold", "Silver", "Brent Crude",
         "Bitcoin",
     ]:
@@ -1852,6 +1889,184 @@ def _fetch_newscatcher(section: str = "global", n: int = 4) -> list:
         return []
 
 
+def _fetch_newsmcp(section: str = "global", n: int = 5) -> list:
+    """
+    Fetch AI-clustered news events from newsmcp.io — FREE, no API key.
+    Returns events ranked by impact score from hundreds of sources.
+    Topics: world, technology, business, science, politics, health, sports, entertainment
+    Ref: https://newsmcp.io/v1
+    """
+    topic_map = {
+        "global": "world",
+        "india": "world",  # Filter by India in results
+        "tech": "technology",
+        "startups": "business",
+        "investing": "business",
+    }
+    topic = topic_map.get(section, "world")
+    try:
+        url = f"https://newsmcp.io/v1/events?topic={topic}&limit={n + 5}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        events = data if isinstance(data, list) else data.get("events", data.get("data", []))
+        for ev in events:
+            if len(items) >= n:
+                break
+            title = (ev.get("title") or ev.get("headline") or "").strip()
+            desc = (ev.get("summary") or ev.get("description") or "").strip()[:200]
+            ev_url = (ev.get("url") or ev.get("link") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            # For India section, filter for India-related content
+            if section == "india":
+                text_lower = (title + " " + desc).lower()
+                if not any(kw in text_lower for kw in ("india", "modi", "mumbai", "delhi", "rupee", "nifty", "sensex", "bjp", "congress")):
+                    continue
+            h = _fmt_headline(title, desc, ev_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  NewsMCP [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  NewsMCP [{section}] failed: {exc}")
+        return []
+
+
+def _fetch_newsmesh(section: str = "global", n: int = 5) -> list:
+    """
+    Fetch news from NewsMesh API — 50,000+ sources, full-text search, trending, categories.
+    Free tier: 25 requests/day.
+    Endpoints: /v1/latest, /v1/trending, /v1/search
+    """
+    api_key = os.environ.get("NEWSMESH_API_KEY", "")
+    if not api_key:
+        return []
+    cat_map = {
+        "global": "world",
+        "india": "world",
+        "tech": "technology",
+        "startups": "business",
+        "investing": "business",
+    }
+    category = cat_map.get(section, "world")
+    try:
+        # Use trending for global/tech, search for India
+        if section == "india":
+            url = f"https://api.newsmesh.co/v1/search?q=India&limit={n + 3}&apikey={api_key}"
+        else:
+            url = f"https://api.newsmesh.co/v1/trending?category={category}&limit={n + 3}&apikey={api_key}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        articles = data if isinstance(data, list) else data.get("articles", data.get("data", data.get("results", [])))
+        for art in articles:
+            if len(items) >= n:
+                break
+            title = (art.get("title") or "").strip()
+            desc = (art.get("description") or art.get("summary") or art.get("content") or "").strip()[:200]
+            art_url = (art.get("url") or art.get("link") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  NewsMesh [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  NewsMesh [{section}] failed: {exc}")
+        return []
+
+
+def _fetch_spaceflight_news(n: int = 3) -> list:
+    """
+    Fetch space/science news from Spaceflight News API v4 — FREE, no API key.
+    Ref: https://api.spaceflightnewsapi.net/v4/docs
+    """
+    try:
+        url = f"https://api.spaceflightnewsapi.net/v4/articles/?limit={n}&ordering=-published_at"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        for art in (data.get("results") or []):
+            title = (art.get("title") or "").strip()
+            desc = (art.get("summary") or "").strip()[:200]
+            art_url = (art.get("url") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  Spaceflight News: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  Spaceflight News failed: {exc}")
+        return []
+
+
+def _fetch_webzio(section: str = "global", n: int = 5) -> list:
+    """
+    Fetch news from Webz.io News API Lite — structured news with sentiment/topic filters.
+    Free tier: 1,000 calls/month, 10 articles per call.
+    Ref: https://docs.webz.io/reference/news-api-lite
+    """
+    api_key = os.environ.get("WEBZ_IO_API_KEY", "")
+    if not api_key:
+        return []
+    query_map = {
+        "global": "world news OR breaking news",
+        "india": "India economy OR India politics OR India business",
+        "tech": "artificial intelligence OR technology OR startup",
+        "startups": "startup funding OR acquisition OR venture capital",
+        "investing": 'topic:"financial and economic news"',
+    }
+    query = query_map.get(section, "world news")
+    try:
+        encoded_q = urllib.parse.quote(query)
+        url = f"https://api.webz.io/newsApiLite?token={api_key}&q={encoded_q}&size=10&sort=date"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (digest-bot/1.0)",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+        items: list[str] = []
+        posts = data.get("posts") or data.get("articles") or data.get("results") or []
+        for art in posts:
+            if len(items) >= n:
+                break
+            # Webz.io uses nested "thread" object or flat structure
+            thread = art.get("thread", art)
+            title = (thread.get("title") or art.get("title") or "").strip()
+            desc = (art.get("text") or art.get("body") or thread.get("snippet") or "").strip()[:200]
+            art_url = (thread.get("url") or art.get("url") or "").strip()
+            if not title or _is_junk_title(title):
+                continue
+            h = _fmt_headline(title, desc, art_url)
+            if h:
+                items.append(h)
+        if items:
+            _log("DATA", f"  Webz.io [{section}]: {len(items)} results")
+        return items
+    except Exception as exc:
+        _log("WARN", f"  Webz.io [{section}] failed: {exc}")
+        return []
+
+
 def _fetch_mediastack(section: str = "global", n: int = 4) -> list:
     """
     Fetch news from Mediastack API.
@@ -2132,22 +2347,22 @@ def _build_direct(
         v = market.get(key, {"price": "[N/A]", "change": "[N/A]"})
         return f"| {key} | {v['price']} | {v['change']} |"
 
-    nifty  = market.get("Nifty 50", {"price": "[N/A]", "change": "[N/A]"})
-
     def _section(items: list, placeholder: str) -> str:
-        return ("\n".join(f"- {b}" for b in items[:3])
+        return ("\n".join(f"- {b}" for b in items[:5])
                 if items else placeholder)
 
-    global_sec = _section(glob_news,  "- _No global news available today._")
-    india_sec  = _section(india_news, "- _No India news available today._")
-    tech_mixed = tech_news[:2] + [f"**{h}**" for h in hn[:2]]
-    tech_sec   = _section(tech_mixed, "- _No tech news available today._")
+    # Merge global + India into Top Stories
+    all_news = glob_news + india_news
+    top_sec = _section(all_news, "- _No news available today._")
+    tech_mixed = tech_news[:3] + [f"**{h}**" for h in hn[:2]]
+    tech_sec = _section(tech_mixed, "- _No tech news available today._")
 
+    sp500 = market.get("S&P 500", {"price": "[N/A]", "change": "[N/A]"})
     parts = []
-    if nifty["price"] != "[N/A]":
-        parts.append(f"Nifty {nifty['price']} ({nifty['change']})")
-    if glob_news:
-        parts.append(glob_news[0].replace("**", "").split(" — ")[0][:80])
+    if sp500["price"] != "[N/A]":
+        parts.append(f"S&P 500 {sp500['price']} ({sp500['change']})")
+    if all_news:
+        parts.append(all_news[0].replace("**", "").split(" — ")[0][:80])
     summary = "; ".join(parts) + "." if parts else "Daily markets and news digest."
 
     return f"""\
@@ -2159,6 +2374,14 @@ summary: "{summary}"
 
 ## Markets
 
+**US**
+
+| Index | Price | Change |
+|-------|-------|--------|
+{_mrow("S&P 500")}
+{_mrow("NASDAQ")}
+{_mrow("Dow Jones")}
+
 **India**
 
 | Index | Price | Change |
@@ -2167,18 +2390,19 @@ summary: "{summary}"
 {_mrow("Sensex")}
 {_mrow("USD/INR")}
 
-**Global**
+<details>
+<summary>Other Major Economies</summary>
 
 | Index | Price | Change |
 |-------|-------|--------|
-{_mrow("S&P 500")}
-{_mrow("NASDAQ")}
-{_mrow("Dow Jones")}
 {_mrow("Nikkei 225")}
 {_mrow("FTSE 100")}
 {_mrow("DAX")}
 
-**Commodities & Crypto**
+</details>
+
+<details>
+<summary>Commodities & Crypto</summary>
 
 | Asset | Price | Change |
 |-------|-------|--------|
@@ -2187,17 +2411,13 @@ summary: "{summary}"
 {_mrow("Brent Crude")}
 {_mrow("Bitcoin")}
 
----
-
-## Global News
-
-{global_sec}
+</details>
 
 ---
 
-## India
+## Top Stories
 
-{india_sec}
+{top_sec}
 
 ---
 
@@ -2217,13 +2437,43 @@ def _make_level1(prompt: str) -> list:
     All have access to pre-fetched data AND can search for more.
     """
     def _gemini() -> str:
-        """Gemini with Google Search grounding — best for real-time news."""
+        """Gemini with Google Search grounding — best for real-time news.
+        Auto-discovers the best available flash model via SDK if configured name fails.
+        """
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                               http_options={"timeout": 600000})
+
+        def _resolve_model() -> str:
+            """Return the best available Gemini flash model name."""
+            # Try configured model first
+            configured = CFG["GEMINI_MODEL"]
+            try:
+                # Quick check: list models and see if configured one exists
+                available = []
+                for m in client.models.list():
+                    name = m.name.replace("models/", "") if hasattr(m, "name") else ""
+                    if name:
+                        available.append(name)
+                if configured in available:
+                    return configured
+                # Configured model gone — find best flash model dynamically
+                # Prefer: gemini-*-flash (latest version, highest number)
+                flash_models = sorted(
+                    [n for n in available if "flash" in n and "gemini" in n],
+                    reverse=True,  # Latest version first (lexicographic: 2.5 > 2.0)
+                )
+                if flash_models:
+                    _log("WARN", f"  Gemini: {configured} unavailable, using {flash_models[0]}")
+                    return flash_models[0]
+            except Exception:
+                pass  # List failed — fall through to direct attempts
+            return configured
+
+        model_name = _resolve_model()
         resp = client.models.generate_content(
-            model=CFG["GEMINI_MODEL"],
+            model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())]
@@ -2402,8 +2652,31 @@ def _make_level2(prompt: str) -> list:
         from google import genai
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                               http_options={"timeout": 600000})
+
+        def _resolve_model() -> str:
+            configured = CFG["GEMINI_MODEL"]
+            try:
+                available = []
+                for m in client.models.list():
+                    name = m.name.replace("models/", "") if hasattr(m, "name") else ""
+                    if name:
+                        available.append(name)
+                if configured in available:
+                    return configured
+                flash_models = sorted(
+                    [n for n in available if "flash" in n and "gemini" in n],
+                    reverse=True,
+                )
+                if flash_models:
+                    _log("WARN", f"  Gemini: {configured} unavailable, using {flash_models[0]}")
+                    return flash_models[0]
+            except Exception:
+                pass
+            return configured
+
+        model_name = _resolve_model()
         resp = client.models.generate_content(
-            model=CFG["GEMINI_MODEL"],
+            model=model_name,
             contents=prompt,
         )
         return resp.text or ""
@@ -2507,8 +2780,6 @@ def _data_only(market: dict, hn: list,
         v = market.get(key, {"price": "[N/A]", "change": "[N/A]"})
         return f"| {key} | {v['price']} | {v['change']} |"
 
-    nifty = market.get("Nifty 50", {"price": "[N/A]", "change": "[N/A]"})
-
     def _section_bullets(tavily: Optional[list], hn_items: list,
                          verify_msg: str) -> str:
         if tavily:
@@ -2517,15 +2788,12 @@ def _data_only(market: dict, hn: list,
             return "\n".join(f"- **{h}**" for h in hn_items[:3])
         return verify_msg
 
+    # Merge global + India headlines for Top Stories
+    all_news = (tavily_global or []) + (tavily_india or [])
     global_bullets = _section_bullets(
-        tavily_global, [],
-        "- **[verify]** — _Add today's global news._\n"
-        "- **[verify]** — _Add today's global news._",
-    )
-    india_bullets = _section_bullets(
-        tavily_india, [],
-        "- **[verify]** — _Add today's India news._\n"
-        "- **[verify]** — _Add today's India news._",
+        all_news if all_news else None, [],
+        "- **[verify]** — _Add today's top stories._\n"
+        "- **[verify]** — _Add today's top stories._",
     )
     # Tech: prefer Tavily tech news, fall back to HN, then verify
     tech_hn = [f"**{h}**" for h in hn[:4]]
@@ -2536,10 +2804,11 @@ def _data_only(market: dict, hn: list,
     )
 
     parts = []
-    if nifty["price"] != "[N/A]":
-        parts.append(f"Nifty {nifty['price']} ({nifty['change']})")
-    if tavily_global:
-        first = tavily_global[0].replace("**", "").split(" — ")[0][:80]
+    sp500 = market.get("S&P 500", {"price": "[N/A]", "change": "[N/A]"})
+    if sp500["price"] != "[N/A]":
+        parts.append(f"S&P 500 {sp500['price']} ({sp500['change']})")
+    if all_news:
+        first = all_news[0].replace("**", "").split(" — ")[0][:80]
         parts.append(first)
     elif hn:
         parts.append(hn[0][:80])
@@ -2554,6 +2823,14 @@ summary: "{summary}"
 
 ## Markets
 
+**US**
+
+| Index | Price | Change |
+|-------|-------|--------|
+{_mrow("S&P 500")}
+{_mrow("NASDAQ")}
+{_mrow("Dow Jones")}
+
 **India**
 
 | Index | Price | Change |
@@ -2562,18 +2839,19 @@ summary: "{summary}"
 {_mrow("Sensex")}
 {_mrow("USD/INR")}
 
-**Global**
+<details>
+<summary>Other Major Economies</summary>
 
 | Index | Price | Change |
 |-------|-------|--------|
-{_mrow("S&P 500")}
-{_mrow("NASDAQ")}
-{_mrow("Dow Jones")}
 {_mrow("Nikkei 225")}
 {_mrow("FTSE 100")}
 {_mrow("DAX")}
 
-**Commodities & Crypto**
+</details>
+
+<details>
+<summary>Commodities & Crypto</summary>
 
 | Asset | Price | Change |
 |-------|-------|--------|
@@ -2582,17 +2860,13 @@ summary: "{summary}"
 {_mrow("Brent Crude")}
 {_mrow("Bitcoin")}
 
+</details>
+
 ---
 
-## Global News
+## Top Stories
 
 {global_bullets}
-
----
-
-## India
-
-{india_bullets}
 
 ---
 
@@ -2615,6 +2889,14 @@ summary: "[DRAFT — fill in summary before publishing]"
 
 ## Markets
 
+**US**
+
+| Index | Price | Change |
+|-------|-------|--------|
+| S&P 500 | [price] | [change]% |
+| NASDAQ | [price] | [change]% |
+| Dow Jones | [price] | [change]% |
+
 **India**
 
 | Index | Price | Change |
@@ -2623,18 +2905,19 @@ summary: "[DRAFT — fill in summary before publishing]"
 | Sensex | [price] | [change]% |
 | USD/INR | [price] | [change]% |
 
-**Global**
+<details>
+<summary>Other Major Economies</summary>
 
 | Index | Price | Change |
 |-------|-------|--------|
-| S&P 500 | [price] | [change]% |
-| NASDAQ | [price] | [change]% |
-| Dow Jones | [price] | [change]% |
 | Nikkei 225 | [price] | [change]% |
 | FTSE 100 | [price] | [change]% |
 | DAX | [price] | [change]% |
 
-**Commodities & Crypto**
+</details>
+
+<details>
+<summary>Commodities & Crypto</summary>
 
 | Asset | Price | Change |
 |-------|-------|--------|
@@ -2643,16 +2926,11 @@ summary: "[DRAFT — fill in summary before publishing]"
 | Brent Crude | [price] | [change]% |
 | Bitcoin | [price] | [change]% |
 
----
-
-## Global News
-
-- **[Headline]** — [detail].
-- **[Headline]** — [detail].
+</details>
 
 ---
 
-## India
+## Top Stories
 
 - **[Headline]** — [detail].
 - **[Headline]** — [detail].
@@ -2660,6 +2938,13 @@ summary: "[DRAFT — fill in summary before publishing]"
 ---
 
 ## AI & Tech
+
+- **[Headline]** — [detail].
+- **[Headline]** — [detail].
+
+---
+
+## Markets & Economy
 
 - **[Headline]** — [detail].
 - **[Headline]** — [detail]."""
@@ -2788,6 +3073,9 @@ def main() -> None:
             ("NewsData",     lambda: _fetch_newsdata("global", 4)),
             ("WorldNews",    lambda: _fetch_worldnewsapi("global", 4)),
             ("NewsCatcher",  lambda: _fetch_newscatcher("global", 4)),
+            ("NewsMCP",      lambda: _fetch_newsmcp("global", 5)),
+            ("NewsMesh",     lambda: _fetch_newsmesh("global", 5)),
+            ("Webz.io",      lambda: _fetch_webzio("global", 5)),
             ("GoogleNews",   lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=world+news+today&hl=en&gl=US&ceid=US:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
@@ -2813,6 +3101,9 @@ def main() -> None:
             ("NewsData", lambda: _fetch_newsdata("india", 4)),
             ("WorldNews", lambda: _fetch_worldnewsapi("india", 4)),
             ("NewsCatcher", lambda: _fetch_newscatcher("india", 4)),
+            ("NewsMCP",  lambda: _fetch_newsmcp("india", 4)),
+            ("NewsMesh", lambda: _fetch_newsmesh("india", 4)),
+            ("Webz.io",  lambda: _fetch_webzio("india", 4)),
             ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
@@ -2838,6 +3129,10 @@ def main() -> None:
             ("NewsData", lambda: _fetch_newsdata("tech", 4)),
             ("WorldNews", lambda: _fetch_worldnewsapi("tech", 4)),
             ("NewsCatcher", lambda: _fetch_newscatcher("tech", 4)),
+            ("NewsMCP",  lambda: _fetch_newsmcp("tech", 5)),
+            ("NewsMesh", lambda: _fetch_newsmesh("tech", 5)),
+            ("Webz.io",  lambda: _fetch_webzio("tech", 5)),
+            ("Spaceflight", lambda: _fetch_spaceflight_news(3)),
             ("GoogleNews",  lambda: _fetch_rss_headlines("https://news.google.com/rss/search?q=AI+technology+startups&hl=en&gl=US&ceid=US:en", 5)),
         ]
         with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
@@ -3075,6 +3370,88 @@ def main() -> None:
         source = "blank-template"
         _log("OK", "blank template created — edit before publishing")
 
+    # ── Last resort retry: if we fell through to blank template, retry ALL
+    # models with RELAXED validation (accept any non-empty AI output, don't
+    # require all mandatory sections). Better to have partial content than
+    # an empty frame. ─────────────────────────────────────────────────────
+    if source == "blank-template":
+        _log("INFO", "─── Last resort: retrying ALL models (relaxed validation) ──")
+
+        def _validate_relaxed(text: str) -> bool:
+            """Accept any AI output that has some real content — no section checks."""
+            text = _normalize(text)
+            if len(text) < 200:
+                return False
+            if not text.startswith("---"):
+                return False
+            # Reject outputs that still contain placeholder markers
+            for placeholder in _PLACEHOLDER_PATTERNS:
+                if placeholder in text:
+                    return False
+            # Require at least 2 headline bullets (proof of real content)
+            if text.count("- **") < 2:
+                return False
+            return True
+
+        def _run_relaxed(providers: list) -> Optional[tuple]:
+            """Same as _run() but uses relaxed validation."""
+            for name, key_env, fn in providers:
+                if key_env and not os.environ.get(key_env):
+                    continue
+                try:
+                    _log("TRY", f"{name} (relaxed) ...")
+                    text = fn()
+                    if _validate_relaxed(text):
+                        _log("OK", f"{name} (relaxed) ✓")
+                        return text, name
+                    snippet = (_normalize(text) or "")[:80].replace("\n", "↵")
+                    _log("FAIL", f"{name} (relaxed) — still invalid: {snippet!r}")
+                except Exception as exc:
+                    _log("FAIL", f"{name} (relaxed) — {type(exc).__name__}: {exc}")
+            return None
+
+        # Try Level 1 (search-capable) with relaxed validation
+        outcome = _run_relaxed(_make_level1(search_prompt))
+        if outcome:
+            result, source = outcome
+
+        # Try Level 2 (standard) with relaxed validation
+        if source == "blank-template":
+            outcome = _run_relaxed(_make_level2(data_prompt))
+            if outcome:
+                result, source = outcome
+
+        # Try Ollama with relaxed validation
+        if source == "blank-template":
+            ollama_model = os.environ.get("OLLAMA_MODEL", "")
+            if ollama_model:
+                try:
+                    _log("TRY", f"ollama ({ollama_model}) (relaxed) ...")
+                    body = json.dumps({
+                        "model": ollama_model,
+                        "prompt": data_prompt,
+                        "stream": False,
+                        "options": {"temperature": 0.1, "num_predict": 4096},
+                    }).encode()
+                    req = urllib.request.Request(
+                        "http://localhost:11434/api/generate",
+                        data=body,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    with urllib.request.urlopen(req, timeout=600) as resp:
+                        data = json.loads(resp.read())
+                    text = data.get("response", "")
+                    if _validate_relaxed(text):
+                        result, source = text, "ollama"
+                        _log("OK", f"ollama ({ollama_model}) (relaxed) ✓")
+                except Exception as exc:
+                    _log("FAIL", f"ollama (relaxed) — {type(exc).__name__}: {exc}")
+
+        if source != "blank-template":
+            _log("OK", f"Last resort retry succeeded with: {source}")
+        else:
+            _log("WARN", "Last resort retry exhausted — using blank template")
+
     # ── Fetch top gainers/losers for markets ─────────────────────────────
     def _fetch_us_movers() -> tuple[list, list]:
         """Fetch S&P 500 top gainers/losers. Yahoo screener → Alpha Vantage fallback."""
@@ -3209,11 +3586,18 @@ def main() -> None:
 
     # ── Replace Markets section with REAL data (never trust AI for numbers) ──
     def _build_real_markets(mkt: dict) -> str:
-        """Build the Markets markdown section from actual fetched data."""
+        """Build the Markets markdown section from actual fetched data.
+
+        Top 5 economies always visible: US, India, Japan, China, UK.
+        Other indices + commodities + crypto in collapsible sections.
+        Uses <details><summary> for expand/collapse — pure HTML, no CSS needed.
+        Market data is never AI-generated — always real numbers from APIs.
+        """
         _CUR = {
             "Nifty 50": "₹", "Sensex": "₹", "USD/INR": "₹",
             "S&P 500": "$", "NASDAQ": "$", "Dow Jones": "$",
-            "Nikkei 225": "¥", "FTSE 100": "£", "DAX": "€",
+            "Nikkei 225": "¥", "Shanghai": "¥", "Hang Seng": "HK$",
+            "FTSE 100": "£", "DAX": "€", "CAC 40": "€",
             "Gold": "$", "Silver": "$", "Brent Crude": "$", "Bitcoin": "$",
         }
 
@@ -3228,40 +3612,45 @@ def main() -> None:
             """Format movers as: TICKER (+X.X%), TICKER (+Y.Y%), ..."""
             return ", ".join(f"{sym} ({pct})" for sym, pct in items)
 
-        india_movers_md = ""
-        if india_gainers:
-            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>'
-        if india_losers:
-            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Losers: {_movers_line(india_losers)}</p>'
-
         us_movers_md = ""
         if us_gainers:
             us_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">S&P 500 Gainers: {_movers_line(us_gainers)}</p>'
         if us_losers:
             us_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">S&P 500 Losers: {_movers_line(us_losers)}</p>'
 
+        india_movers_md = ""
+        if india_gainers:
+            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>'
+        if india_losers:
+            india_movers_md += f'\n\n<p style="font-size:0.82em;opacity:0.7">Nifty 50 Losers: {_movers_line(india_losers)}</p>'
+
         return f"""## Markets
-
-**India**
-
-| Index | Price | Change |
-|-------|-------|--------|
-{_r("Nifty 50")}
-{_r("Sensex")}
-{_r("USD/INR")}{india_movers_md}
-
-**Global**
 
 | Index | Price | Change |
 |-------|-------|--------|
 {_r("S&P 500")}
 {_r("NASDAQ")}
 {_r("Dow Jones")}
+{_r("Nifty 50")}
+{_r("Sensex")}
 {_r("Nikkei 225")}
-{_r("FTSE 100")}
-{_r("DAX")}{us_movers_md}
+{_r("Shanghai")}
+{_r("FTSE 100")}{us_movers_md}{india_movers_md}
 
-**Commodities & Crypto**
+<details>
+<summary>More Indices</summary>
+
+| Index | Price | Change |
+|-------|-------|--------|
+{_r("Hang Seng")}
+{_r("DAX")}
+{_r("CAC 40")}
+{_r("USD/INR")}
+
+</details>
+
+<details>
+<summary>Commodities & Crypto</summary>
 
 | Asset | Price | Change |
 |-------|-------|--------|
@@ -3269,6 +3658,8 @@ def main() -> None:
 {_r("Silver")}
 {_r("Brent Crude")}
 {_r("Bitcoin")}
+
+</details>
 """
 
     # Replace AI-generated Markets section with real data
@@ -3415,6 +3806,23 @@ def main() -> None:
     html_body = html_body.replace(
         "<strong>&#8599;</strong>",
         '<strong style="color:#2563eb;text-decoration:none">&#8599;</strong>',
+    )
+
+    # ── Append disclaimer (static, never AI-generated) ──────────────────────
+    html_body += (
+        '\n<hr style="margin-top:2rem;border:none;border-top:1px solid #ddd">'
+        '\n<p style="font-size:0.75rem;color:#888;line-height:1.4;margin-top:0.5rem">'
+        'Disclaimer: This digest is generated automatically using artificial intelligence. '
+        'News content is summarized by AI models and may contain inaccuracies, errors, or '
+        'outdated information. Market data is sourced from third-party APIs and may be delayed. '
+        'Verify all information independently before acting on it.'
+        '</p>'
+        '\n<p style="font-size:0.75rem;color:#888;line-height:1.4;margin-top:0.25rem">'
+        'The author does not host, produce, or guarantee the accuracy of any content presented here. '
+        'All news and data are aggregated from publicly available sources. '
+        'This is not financial, legal, or professional advice. '
+        'Use at your own risk. No liability is accepted for any loss, damage, or legal action arising from the use of this information.'
+        '</p>'
     )
 
     OUTPUT_FILE.write_text(html_body, encoding="utf-8")
