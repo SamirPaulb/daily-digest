@@ -113,7 +113,7 @@ CFG = {
     # Level 1 (search-capable, ranked by quality):
     "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.5-flash"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "minimaxai/minimax-m3"),
-    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "openai/gpt-oss-120b:free"),
+    "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "perplexity/sonar-reasoning-pro:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
     "XAI_MODEL":               _env("XAI_MODEL",               "grok-3-mini-fast"),
     "CLAUDE_MODEL":            _env("CLAUDE_MODEL",            "claude-haiku-4-5-20251001"),
@@ -121,7 +121,7 @@ CFG = {
 
     # Level 2 (standard, ranked by quality — same models, no search):
     "OPENAI_MODEL":            _env("OPENAI_MODEL",            "gpt-4.1-mini"),
-    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "nvidia/nemotron-3-super:free"),
+    "OPENROUTER_FREE_MODEL":   _env("OPENROUTER_FREE_MODEL",   "meta-llama/llama-4-maverick:free"),
     "GROQ_MODEL":              _env("GROQ_MODEL",              "llama-3.3-70b-versatile"),
     "MISTRAL_MODEL":           _env("MISTRAL_MODEL",           "mistral-small-latest"),
     "FIREWORKS_MODEL":         _env("FIREWORKS_MODEL",          "accounts/fireworks/models/deepseek-v3p1"),
@@ -1139,7 +1139,7 @@ def _fetch_market_data() -> dict:
             _log("DATA", f"  Sensex (fallback): {q_sensex['price']} ({q_sensex['change']})")
 
     # ── Global indices + commodities + crypto (parallel) ────────────────────
-    # Top 5 economies by stock market cap: US, China, Japan, UK, India (India shown 2nd)
+    # Top economies by stock market cap + key commodities/crypto
     _GLOBAL_SYMBOLS: list[tuple[str, str]] = [
         ("S&P 500",       "^GSPC"),
         ("NASDAQ",        "^IXIC"),
@@ -1150,6 +1150,7 @@ def _fetch_market_data() -> dict:
         ("Shanghai",      "000001.SS"),
         ("Hang Seng",     "^HSI"),
         ("CAC 40",        "^FCHI"),
+        ("KOSPI",         "^KS11"),
         ("Gold",          "GC=F"),
         ("Silver",        "SI=F"),
         ("Brent Crude",   "BZ=F"),
@@ -1201,8 +1202,8 @@ def _fetch_market_data() -> dict:
     ordered: dict = {}
     for key in [
         "S&P 500", "NASDAQ", "Dow Jones",
-        "Nifty 50", "Sensex", "USD/INR",
-        "Nikkei 225", "Shanghai", "Hang Seng", "FTSE 100", "DAX", "CAC 40",
+        "Nifty 50", "USD/INR",
+        "Nikkei 225", "Shanghai", "Hang Seng", "KOSPI", "FTSE 100", "DAX", "CAC 40",
         "Gold", "Silver", "Brent Crude",
         "Bitcoin",
     ]:
@@ -3613,17 +3614,33 @@ def main() -> None:
         _CUR = {
             "Nifty 50": "₹", "Sensex": "₹", "USD/INR": "₹",
             "S&P 500": "$", "NASDAQ": "$", "Dow Jones": "$",
-            "Nikkei 225": "¥", "Shanghai": "¥", "Hang Seng": "HK$",
+            "Nikkei 225": "¥", "Shanghai": "¥", "Hang Seng": "HK$", "KOSPI": "₩",
             "FTSE 100": "£", "DAX": "€", "CAC 40": "€",
             "Gold": "$", "Silver": "$", "Brent Crude": "$", "Bitcoin": "$",
         }
 
         def _r(key: str) -> str:
+            """Markdown table row."""
             v = mkt.get(key, {"price": "[N/A]", "change": "[N/A]"})
             price = v["price"]
             if price != "[N/A]":
                 price = f'{_CUR.get(key, "")}{price}'
             return f"| {key} | {price} | {v['change']} |"
+
+        def _html_row(key: str) -> str:
+            """HTML table row — used inside <details> where markdown isn't parsed."""
+            v = mkt.get(key, {"price": "[N/A]", "change": "[N/A]"})
+            price = v["price"]
+            change = v["change"]
+            if price != "[N/A]":
+                price = f'{_CUR.get(key, "")}{price}'
+            css = ""
+            if isinstance(change, str):
+                if change.startswith("+"):
+                    css = ' class="change-positive"'
+                elif change.startswith("-"):
+                    css = ' class="change-negative"'
+            return f"<tr><td>{key}</td><td>{price}</td><td{css}>{change}</td></tr>"
 
         def _movers_line(items: list) -> str:
             """Format movers as: TICKER (+X.X%), TICKER (+Y.Y%), ..."""
@@ -3649,33 +3666,33 @@ def main() -> None:
 {_r("NASDAQ")}
 {_r("Dow Jones")}
 {_r("Nifty 50")}
-{_r("Sensex")}
 {_r("Nikkei 225")}
 {_r("Shanghai")}
-{_r("FTSE 100")}{us_movers_md}{india_movers_md}
+{_r("FTSE 100")}
 
 <details>
-<summary>More Indices</summary>
-
-| Index | Price | Change |
-|-------|-------|--------|
-{_r("Hang Seng")}
-{_r("DAX")}
-{_r("CAC 40")}
-{_r("USD/INR")}
-
+<summary>More Indices & Movers</summary>
+<table><thead><tr><th>Index</th><th>Price</th><th>Change</th></tr></thead><tbody>
+{_html_row("Hang Seng")}
+{_html_row("KOSPI")}
+{_html_row("DAX")}
+{_html_row("CAC 40")}
+{_html_row("USD/INR")}
+</tbody></table>
+{f'<p style="font-size:0.82em;opacity:0.7;margin-top:0.5em">S&P 500 Top Gainers: {_movers_line(us_gainers)}</p>' if us_gainers else ''}
+{f'<p style="font-size:0.82em;opacity:0.7">S&P 500 Top Losers: {_movers_line(us_losers)}</p>' if us_losers else ''}
+{f'<p style="font-size:0.82em;opacity:0.7">Nifty 50 Gainers: {_movers_line(india_gainers)}</p>' if india_gainers else ''}
+{f'<p style="font-size:0.82em;opacity:0.7">Nifty 50 Losers: {_movers_line(india_losers)}</p>' if india_losers else ''}
 </details>
 
 <details>
 <summary>Commodities & Crypto</summary>
-
-| Asset | Price | Change |
-|-------|-------|--------|
-{_r("Gold")}
-{_r("Silver")}
-{_r("Brent Crude")}
-{_r("Bitcoin")}
-
+<table><thead><tr><th>Asset</th><th>Price</th><th>Change</th></tr></thead><tbody>
+{_html_row("Gold")}
+{_html_row("Silver")}
+{_html_row("Brent Crude")}
+{_html_row("Bitcoin")}
+</tbody></table>
 </details>
 """
 
