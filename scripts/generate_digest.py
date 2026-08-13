@@ -111,7 +111,7 @@ def _env(key: str, default: str) -> str:
 CFG = {
     # ── AI Provider Models ────────────────────────────────────────────────
     # Level 1 (search-capable, ranked by quality):
-    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.5-flash"),
+    "GEMINI_MODEL":            _env("GEMINI_MODEL",            "gemini-2.5-flash-preview-05-20"),
     "OPENAI_SEARCH_MODEL":     _env("OPENAI_SEARCH_MODEL",     "minimaxai/minimax-m3"),
     "OPENROUTER_SEARCH_MODEL": _env("OPENROUTER_SEARCH_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free"),
     "DEEPSEEK_MODEL":          _env("DEEPSEEK_MODEL",          "deepseek-v4-flash"),
@@ -2447,27 +2447,35 @@ def _make_level1(prompt: str) -> list:
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                               http_options={"timeout": 600000})
 
-        # Build ordered list of models to try
-        models_to_try = [CFG["GEMINI_MODEL"]]
+        # Build ordered list of models to try — prioritize known free-tier models
+        # before SDK discovery (which may find models with 0 free quota like gemini-omni-flash)
+        models_to_try = [
+            CFG["GEMINI_MODEL"],
+            "gemini-2.5-pro-1p-freebie",
+            "gemini-2.5-flash-preview-05-20",
+            "gemini-flash-latest",
+            "gemini-2.0-flash-001",
+        ]
+        # Remove duplicates while preserving order
+        seen = set()
+        models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
+        # Then add SDK-discovered models as additional fallbacks
         try:
             available = []
             for m in client.models.list():
                 name = m.name.replace("models/", "") if hasattr(m, "name") else ""
                 if name:
                     available.append(name)
-            # Add all available flash models sorted by version (latest first)
             flash_models = sorted(
-                [n for n in available if "flash" in n and "gemini" in n],
+                [n for n in available if "flash" in n and "gemini" in n
+                 and "omni" not in n],  # Skip gemini-omni-flash (0 free quota)
                 reverse=True,
             )
             for fm in flash_models:
                 if fm not in models_to_try:
                     models_to_try.append(fm)
         except Exception:
-            # List API failed — add hardcoded fallbacks
-            for alias in ("gemini-2.5-flash-preview-05-20", "gemini-flash-latest", "gemini-2.0-flash-001"):
-                if alias not in models_to_try:
-                    models_to_try.append(alias)
+            pass
 
         # Try each model until one works
         last_err = None
@@ -2484,7 +2492,7 @@ def _make_level1(prompt: str) -> list:
             except Exception as e:
                 last_err = e
                 err_str = str(e)
-                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str:
+                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str or "RESOURCE_EXHAUSTED" in err_str or "limit: 0" in err_str:
                     _log("WARN", f"  Gemini model {model_name} unavailable, trying next...")
                     continue
                 raise  # Non-model error (network, auth, etc.) — propagate
@@ -2693,7 +2701,7 @@ def _make_level2(prompt: str) -> list:
             except Exception as e:
                 last_err = e
                 err_str = str(e)
-                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str:
+                if "no longer available" in err_str or "NOT_FOUND" in err_str or "404" in err_str or "RESOURCE_EXHAUSTED" in err_str or "limit: 0" in err_str:
                     _log("WARN", f"  Gemini model {model_name} unavailable, trying next...")
                     continue
                 raise
